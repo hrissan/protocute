@@ -1,0 +1,17 @@
+# IDEs/editors
+.idea/
+.vs/
+xcuserdata
+*swp
+
+# cmake specific
+CMakeLists.txt.user*
+cmake-build-*
+
+# Build
+bin/
+libs/
+build/
+
+# Mac specific
+.DS_Store

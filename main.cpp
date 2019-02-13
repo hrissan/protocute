@@ -72,33 +72,57 @@ struct convert_f {
 
 boost::phoenix::function<convert_f> convert;
 
+struct skip_grammar : qi::grammar<Iterator> {
+    qi::rule<Iterator> start;
+    skip_grammar() : skip_grammar::base_type(start) {
+        single_line_comment = "//" >> *(char_ - spirit::eol) >> (spirit::eol|spirit::eoi);
+        block_comment = "/*" >> *(block_comment | char_ - "*/") > "*/";
+
+        start = single_line_comment | block_comment | qi::blank;
+    }
+    qi::rule<Iterator> block_comment, single_line_comment, skipper;
+};
+
 void test2(std::string str){
-	qi::rule<Iterator, std::string()> g_decimalLit = char_("1-9") >> *qi::digit;
-	qi::rule<Iterator, std::string()> g_octalLit = char_("0") >> *char_("0-7");
-	qi::rule<Iterator, std::string()> g_hexLit = char_("0") >> (char_("x") | char_("X")) >> +qi::xdigit;
-	qi::rule<Iterator, std::string()> g_intLit = g_decimalLit | g_octalLit | g_hexLit;
+	qi::rule<Iterator, LiteralType()> g_decimalLit = qi::as_string[char_("1-9") >> *qi::digit][ qi::_val = phx::construct<LiteralType>(1, qi::_1)];
+	qi::rule<Iterator, LiteralType()> g_octalLit = qi::as_string[char_("0") >> *char_("0-7")][ qi::_val = phx::construct<LiteralType>(2, qi::_1)];
+	qi::rule<Iterator, LiteralType()> g_hexLit = qi::as_string[char_("0") >> (char_("x") | char_("X")) >> +qi::xdigit][ qi::_val = phx::construct<LiteralType>(3, qi::_1)];
+	qi::rule<Iterator, LiteralType()> g_intLit = g_decimalLit | g_hexLit | g_octalLit;
 
-	qi::rule<Iterator, LiteralType()> g_decimalLit2 = qi::as_string[char_("1-9") >> *qi::digit][ qi::_val = phx::construct<LiteralType>(1, qi::_1)];
-	qi::rule<Iterator, LiteralType()> g_octalLit2 = qi::as_string[char_("0") >> *char_("0-7")][ qi::_val = phx::construct<LiteralType>(2, qi::_1)];
-	qi::rule<Iterator, LiteralType()> g_hexLit2 = qi::as_string[char_("0") >> (char_("x") | char_("X")) >> +qi::xdigit][ qi::_val = phx::construct<LiteralType>(3, qi::_1)];
-	qi::rule<Iterator, LiteralType()> g_intLit2 = g_decimalLit2 | g_hexLit2 | g_octalLit2;
-//	qi::rule<Iterator, std::string()> g_exponent = (char_("e") | char_("E")) >> ((char_("+") >> +qi::digit) | (char_("-") >> +qi::digit) | +qi::digit);
-	qi::rule<Iterator, std::string()> g_exponent = char_("eE") >> (-char_("+-")) >> +qi::digit;
-	qi::rule<Iterator, LiteralType()> g_floatLit2 = qi::as_string[qi::hold[(+qi::digit >> char_(".") >> *qi::digit >> qi::hold[-g_exponent])] | qi::hold[(+qi::digit >> g_exponent)] | qi::hold[(char_(".") >> +qi::digit >> -g_exponent)] | (char_("i") >> char_("n") >> char_("f")) | (char_("n") >> char_("a") >> char_("n"))][ qi::_val = phx::construct<LiteralType>(4, qi::_1)];
 
+	qi::rule<Iterator, std::string()> g_exponent = qi::hold[char_("eE") >> (-char_("+-")) >> +qi::digit];
+    qi::rule<Iterator, LiteralType()> g_floatLit = qi::as_string[qi::hold[(+qi::digit >> char_(".") >> *qi::digit >> qi::hold[-g_exponent])] | qi::hold[(+qi::digit >> g_exponent)] | qi::hold[(char_(".") >> +qi::digit >> -g_exponent)] | (char_("i") >> char_("n") >> char_("f")) | (char_("n") >> char_("a") >> char_("n"))][ qi::_val = phx::construct<LiteralType>(4, qi::_1)];
+    qi::rule<Iterator, LiteralType()> g_boolLit = qi::as_string[ (char_("f") >> char_("a") >> char_("s") >> char_("e")) | (char_("t") >> char_("r") >> char_("u") >> char_("e"))][ qi::_val = phx::construct<LiteralType>(5, qi::_1)];
+    qi::rule<Iterator, std::string()> g_hexEscape = char_("\\") >> char_("xX") >> qi::xdigit >> qi::xdigit;
+    qi::rule<Iterator, std::string()> g_octalEscape = char_("\\") >> char_("0-7") >> char_("0-7") >> char_("0-7");
+    qi::rule<Iterator, std::string()> g_charEscape = char_("\\") >> char_("abfnrtv\\\"\'");
+    qi::rule<Iterator, std::string()> g_charValue1 = qi::hold[g_hexEscape] | qi::hold[g_octalEscape] | qi::hold[g_charEscape] | (qi::char_ - (qi::char_("\"\n\\") | qi::char_('\0')));
+    qi::rule<Iterator, std::string()> g_charValue2 = qi::hold[g_hexEscape] | qi::hold[g_octalEscape] | qi::hold[g_charEscape] | (qi::char_ - (qi::char_("\'\n\\") | qi::char_('\0')));
+
+    qi::rule<Iterator, LiteralType()> g_strLit = qi::as_string[ qi::hold[(char_("\"") >> *g_charValue1 >> char_("\""))] | qi::hold[(char_("\'") >> *g_charValue2 >> char_("\'"))]][ qi::_val = phx::construct<LiteralType>(6, qi::_1)];
+
+
+//    qi::rule<Iterator, LiteralType()> g_emptyStatement;
+//    qi::rule<Iterator, LiteralType()> g_constant;
+    qi::rule<Iterator, spirit::unused_type, skip_grammar> g_syntax = ascii::string("syntax") >> spirit::lit('=') >> (ascii::string("\"proto2\"") | ascii::string("\'proto2\'")) >> spirit::lit(';');
+    qi::rule<Iterator, LiteralType(), skip_grammar> g_protofile = g_syntax >> g_strLit;// >> spirit::lit('=') >> (ascii::string("\"proto2\"") | ascii::string("\'proto2\'")) >> spirit::lit(';');
+
+//    display_attribute_of_parser(g_protofile);
+//    std::cout << boost::core::demangle(typeid(LiteralType).name()) << std::endl;
 	LiteralType data;
 	Iterator first = str.begin();
-    bool ok = parse(first, str.end(), g_floatLit2, data);
+    skip_grammar ws;
+    bool ok = phrase_parse(first, str.end(), g_protofile, ws, data);
     if (ok) {
         std::cout << "Parse success " << str << " -> {" << data.first << "|" << data.second << "}";
-		std::cout << std::endl;
     } else {
-        std::cout << "Parse failed" << std::endl;
+        std::cout << "Parse failed" << str;
     }
 
     if (first != str.end()) {
-        std::cout << "Remaining unparsed: '" << std::string(first, str.end()) << "'\n";
+        std::cout << "Remaining: '" << std::string(first, str.end()) << "'\n";
     }
+    std::cout << std::endl;
 }
 
 void test1(std::string str){
@@ -120,17 +144,29 @@ void test1(std::string str){
         	std::cout << "{" << s << "}";
 		std::cout << std::endl;
     } else {
-        std::cout << "Parse failed" << std::endl;
+        std::cout << "Parse failed";
     }
 
     if (first != str.end()) {
-        std::cout << "Remaining unparsed: '" << std::string(first, str.end()) << "'\n";
+        std::cout << " Remaining: {" << std::string(first, str.end()) << "}";
     }
+    std::cout << std::endl;
 }
+
 
 int main()
 {
-	test2("1");
+    test2("\"abcde\"");
+    test2("\"abc");
+    test2("\'ab\\x65c\'");
+    test2("\'ab\\x6Uc\'");
+    test2("\'ab\\n\\777\"\'");
+    test2(" /* comment */ syntax = \"proto2\" ; \"aha\"     zlo ");
+    test2(" syntax= \"proto3\"; \"aha\" ");
+    test2("01.");
+    test2("1");
+    test2("01");
+    test2("01.");
 	test2("12.13");
 	test2("12.13e+");
 	test2("12.13e+0");
@@ -145,7 +181,10 @@ int main()
 	test2("00a");
 	test2("e+00x1a");
 	test2("012.3s");
-	test2("inf0x12");
+    test2("inf0x12");
+    test2("in0x12");
+    test2(".012e");
+
 	test1("Hr.en123");
 	test1("Hren.*123");
 	test1(".Zopa .Hren.*123");
