@@ -64,6 +64,35 @@ typedef std::string::iterator Iterator;
 
 typedef std::pair<int, std::string> LiteralType;
 
+struct GImport {
+    int kind = 0;
+    LiteralType filename;
+};
+BOOST_FUSION_ADAPT_STRUCT(
+        GImport,
+(int, kind)
+(LiteralType, filename)
+)
+
+struct GPackage {
+
+};
+struct GOption {
+
+};
+struct GMessage {
+
+};
+struct GEnum {
+
+};
+struct GExtend {
+
+};
+struct GService {
+
+};
+
 struct convert_f {
     LiteralType operator()(const std::string & text) const {
     	return LiteralType{1, text};
@@ -105,6 +134,11 @@ void test2(std::string str){
 //    qi::rule<Iterator, LiteralType()> g_emptyStatement;
 //    qi::rule<Iterator, LiteralType()> g_constant;
     qi::rule<Iterator, spirit::unused_type, skip_grammar> g_syntax = ascii::string("syntax") >> spirit::lit('=') >> (ascii::string("\"proto2\"") | ascii::string("\'proto2\'")) >> spirit::lit(';');
+    qi::rule<Iterator, std::pair<boost::optional<int>, LiteralType>(), skip_grammar> g_import = ascii::string("import") >> -((ascii::string("weak") >> qi::attr(1)) | (ascii::string("public") >> qi::attr(2))) >> g_strLit >> spirit::lit(';');
+//    qi::rule<Iterator, std::pair<boost::variant<int>, LiteralType>(), skip_grammar> g_import = ascii::string("import") | -((ascii::string("weak") >> qi::attr(1)) | (ascii::string("public") >> qi::attr(2))) >> g_strLit >> spirit::lit(';');
+//            proto = syntax { import | package | option | message | enum | extend | service | emptyStatement };
+
+//    qi::rule<Iterator, std::vector<std::pair<boost::variant<int>, LiteralType>>(), skip_grammar> g_protofile = g_syntax >> *(g_import);// >> spirit::lit('=') >> (ascii::string("\"proto2\"") | ascii::string("\'proto2\'")) >> spirit::lit(';');
     qi::rule<Iterator, LiteralType(), skip_grammar> g_protofile = g_syntax >> g_strLit;// >> spirit::lit('=') >> (ascii::string("\"proto2\"") | ascii::string("\'proto2\'")) >> spirit::lit(';');
 
 //    display_attribute_of_parser(g_protofile);
