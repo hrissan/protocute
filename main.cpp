@@ -18,10 +18,12 @@ namespace qi = boost::spirit::qi;
 namespace ascii = boost::spirit::ascii;
 namespace phx    = boost::phoenix;
 
+namespace fusion = boost::fusion;
+
 using qi::lexeme;
 using ascii::char_;
 
-   namespace spirit = boost::spirit;
+namespace spirit = boost::spirit;
 
     template <typename Expr, typename Iterator = spirit::unused_type>
     struct attribute_of_parser
@@ -64,14 +66,29 @@ typedef std::string::iterator Iterator;
 
 typedef std::pair<int, std::string> LiteralType;
 
+std::ostream& operator<<(std::ostream& stream, const LiteralType& val) {
+    return stream << "LiteralType{" << val.first << "}";
+ }
+
 struct GImport {
-    int kind = 0;
-    LiteralType filename;
+	boost::optional<int> kind;
+    std::string filename;
 };
-BOOST_FUSION_ADAPT_STRUCT(
-        GImport,
-(int, kind)
-(LiteralType, filename)
+
+std::ostream& operator<<(std::ostream& stream, const GImport& val) {
+    return stream << "GImport{" << (val.kind ? val.kind.get() : 0) << "|" << val.filename << "}";
+ }
+
+std::ostream& operator<<(std::ostream& stream, const std::vector<std::string> & val) {
+	stream << "v<s>{";
+	for(const auto & s : val)
+		stream << s << "|";
+    return stream << "}";
+ }
+
+BOOST_FUSION_ADAPT_STRUCT(GImport,
+	(boost::optional<int>, kind)
+	(std::string, filename)
 )
 
 struct GPackage {
@@ -105,50 +122,34 @@ struct skip_grammar : qi::grammar<Iterator> {
     qi::rule<Iterator> start;
     skip_grammar() : skip_grammar::base_type(start) {
         single_line_comment = "//" >> *(char_ - spirit::eol) >> (spirit::eol|spirit::eoi);
-        block_comment = "/*" >> *(block_comment | char_ - "*/") > "*/";
+        block_comment = ("/*" >> *(block_comment | char_ - "*/")) > "*/";
 
         start = single_line_comment | block_comment | qi::blank;
     }
     qi::rule<Iterator> block_comment, single_line_comment, skipper;
 };
 
-void test2(std::string str){
-	qi::rule<Iterator, LiteralType()> g_decimalLit = qi::as_string[char_("1-9") >> *qi::digit][ qi::_val = phx::construct<LiteralType>(1, qi::_1)];
-	qi::rule<Iterator, LiteralType()> g_octalLit = qi::as_string[char_("0") >> *char_("0-7")][ qi::_val = phx::construct<LiteralType>(2, qi::_1)];
-	qi::rule<Iterator, LiteralType()> g_hexLit = qi::as_string[char_("0") >> (char_("x") | char_("X")) >> +qi::xdigit][ qi::_val = phx::construct<LiteralType>(3, qi::_1)];
-	qi::rule<Iterator, LiteralType()> g_intLit = g_decimalLit | g_hexLit | g_octalLit;
-
-
-	qi::rule<Iterator, std::string()> g_exponent = qi::hold[char_("eE") >> (-char_("+-")) >> +qi::digit];
-    qi::rule<Iterator, LiteralType()> g_floatLit = qi::as_string[qi::hold[(+qi::digit >> char_(".") >> *qi::digit >> qi::hold[-g_exponent])] | qi::hold[(+qi::digit >> g_exponent)] | qi::hold[(char_(".") >> +qi::digit >> -g_exponent)] | (char_("i") >> char_("n") >> char_("f")) | (char_("n") >> char_("a") >> char_("n"))][ qi::_val = phx::construct<LiteralType>(4, qi::_1)];
-    qi::rule<Iterator, LiteralType()> g_boolLit = qi::as_string[ (char_("f") >> char_("a") >> char_("s") >> char_("e")) | (char_("t") >> char_("r") >> char_("u") >> char_("e"))][ qi::_val = phx::construct<LiteralType>(5, qi::_1)];
-    qi::rule<Iterator, std::string()> g_hexEscape = char_("\\") >> char_("xX") >> qi::xdigit >> qi::xdigit;
-    qi::rule<Iterator, std::string()> g_octalEscape = char_("\\") >> char_("0-7") >> char_("0-7") >> char_("0-7");
-    qi::rule<Iterator, std::string()> g_charEscape = char_("\\") >> char_("abfnrtv\\\"\'");
-    qi::rule<Iterator, std::string()> g_charValue1 = qi::hold[g_hexEscape] | qi::hold[g_octalEscape] | qi::hold[g_charEscape] | (qi::char_ - (qi::char_("\"\n\\") | qi::char_('\0')));
-    qi::rule<Iterator, std::string()> g_charValue2 = qi::hold[g_hexEscape] | qi::hold[g_octalEscape] | qi::hold[g_charEscape] | (qi::char_ - (qi::char_("\'\n\\") | qi::char_('\0')));
-
-    qi::rule<Iterator, LiteralType()> g_strLit = qi::as_string[ qi::hold[(char_("\"") >> *g_charValue1 >> char_("\""))] | qi::hold[(char_("\'") >> *g_charValue2 >> char_("\'"))]][ qi::_val = phx::construct<LiteralType>(6, qi::_1)];
+/*void test2(std::string str){
 
 
 //    qi::rule<Iterator, LiteralType()> g_emptyStatement;
-//    qi::rule<Iterator, LiteralType()> g_constant;
-    qi::rule<Iterator, spirit::unused_type, skip_grammar> g_syntax = ascii::string("syntax") >> spirit::lit('=') >> (ascii::string("\"proto2\"") | ascii::string("\'proto2\'")) >> spirit::lit(';');
-    qi::rule<Iterator, std::pair<boost::optional<int>, LiteralType>(), skip_grammar> g_import = ascii::string("import") >> -((ascii::string("weak") >> qi::attr(1)) | (ascii::string("public") >> qi::attr(2))) >> g_strLit >> spirit::lit(';');
+//    qi::rule<Iterator, LiteralType()> g_constant;  >> qi::attr(2) >>
 //    qi::rule<Iterator, std::pair<boost::variant<int>, LiteralType>(), skip_grammar> g_import = ascii::string("import") | -((ascii::string("weak") >> qi::attr(1)) | (ascii::string("public") >> qi::attr(2))) >> g_strLit >> spirit::lit(';');
 //            proto = syntax { import | package | option | message | enum | extend | service | emptyStatement };
 
 //    qi::rule<Iterator, std::vector<std::pair<boost::variant<int>, LiteralType>>(), skip_grammar> g_protofile = g_syntax >> *(g_import);// >> spirit::lit('=') >> (ascii::string("\"proto2\"") | ascii::string("\'proto2\'")) >> spirit::lit(';');
-    qi::rule<Iterator, LiteralType(), skip_grammar> g_protofile = g_syntax >> g_strLit;// >> spirit::lit('=') >> (ascii::string("\"proto2\"") | ascii::string("\'proto2\'")) >> spirit::lit(';');
+//    qi::rule<Iterator, std::vector<GImport>(), skip_grammar> g_protofile = g_syntax >> *g_import;// >> spirit::lit('=') >> (ascii::string("\"proto2\"") | ascii::string("\'proto2\'")) >> spirit::lit(';');
 
 //    display_attribute_of_parser(g_protofile);
 //    std::cout << boost::core::demangle(typeid(LiteralType).name()) << std::endl;
+//	std::vector<GImport> data;
 	LiteralType data;
 	Iterator first = str.begin();
     skip_grammar ws;
-    bool ok = phrase_parse(first, str.end(), g_protofile, ws, data);
+    bool ok = phrase_parse(first, str.end(), g_import, ws, data);
     if (ok) {
-        std::cout << "Parse success " << str << " -> {" << data.first << "|" << data.second << "}";
+//    	for(const auto & val : data)
+        std::cout << "Parse success " << str << " -> {" <<  data.second << "}"; // (data.kind ? data.kind.get() : 0) << "|" <<
     } else {
         std::cout << "Parse failed" << str;
     }
@@ -157,45 +158,134 @@ void test2(std::string str){
         std::cout << "Remaining: '" << std::string(first, str.end()) << "'\n";
     }
     std::cout << std::endl;
-}
+}*/
 
-void test1(std::string str){
-	qi::rule<Iterator, std::string()> g_ident = lexeme[ ascii::alpha >> *(ascii::alnum) ]; //  | char_('_')
-	qi::rule<Iterator, std::vector<std::string>()> g_fullIdent = g_ident >> *(qi::lit(".") >> g_ident);
-//	qi::rule<Iterator, std::pair<boost::optional<std::string>, std::vector<std::string>>()> g_name = -char_(".") >> g_fullIdent;
-
-//	display_attribute_of_parser(g_ident);
-//	display_attribute_of_parser(qi::matches[-char_(".")] >> g_ident);
-	qi::rule<Iterator, std::pair<bool, std::vector<std::string>>()> g_fullName = -qi::matches[char_(".")] >> g_fullIdent;
-
-	std::pair<bool, std::vector<std::string>> data;
-//	std::vector<std::string> data;
+template<class R>
+void test_parse(std::string str, R & r, std::string must_be){
+	typename R::attr_type data{};
 	Iterator first = str.begin();
-    bool ok = parse(first, str.end(), g_fullName, data);
+    bool ok = parse(first, str.end(), r, data);
     if (ok) {
-        std::cout << "Parse success {" << int(data.first) << "}";
-    	for(auto && s : data.second)
-        	std::cout << "{" << s << "}";
-		std::cout << std::endl;
+        std::cout << str << " -> " << data;
+		if (first != str.end()) {
+			std::cout << " --| " << std::string(first, str.end());
+		}
     } else {
-        std::cout << "Parse failed";
-    }
-
-    if (first != str.end()) {
-        std::cout << " Remaining: {" << std::string(first, str.end()) << "}";
+        std::cout << str << " x ";
     }
     std::cout << std::endl;
+	if(std::string(str.begin(), first) != must_be)
+		std::cout << "====BAD, must be | " << must_be << std::endl;
 }
+
+template<class R>
+void test_phrase_parse(std::string str, R & r, std::string must_be){
+	typename R::attr_type data{};
+	Iterator first = str.begin();
+    skip_grammar ws;
+	qi::on_error<qi::fail>(r,
+					phx::ref(std::cout)
+					   << "Error! Expecting "
+					   << qi::_4
+					   << " here: '"
+					   << phx::construct<std::string>(qi::_3, qi::_2)
+					   << "'\n"
+				);
+	bool ok = phrase_parse(first, str.end(), r, ws, data);
+    if (ok) {
+        std::cout << "{" << str << "} -> " << data;
+		if (first != str.end()) {
+			std::cout << " --|" << std::string(first, str.end()) << "|--";
+		}
+    } else {
+        std::cout << "{" << str << "} x";
+    }
+    std::cout << std::endl;
+	if(std::string(str.begin(), first) != must_be)
+		std::cout << "====BAD, actual {" << std::string(str.begin(), first) << "}" << std::endl;
+}
+//const std::string example1 = R"(
+// import "hren";
+//)";
+// syntax = "proto2" ;
+// import weak "hren";
+// import public "hren";
+
+qi::rule<Iterator, std::string()> g_decimalLit = char_("1-9") >> *qi::digit;
+qi::rule<Iterator, std::string()> g_octalLit = char_("0") >> *char_("0-7");
+qi::rule<Iterator, std::string()> g_hexLit = qi::hold[char_("0") >> (char_("x") | char_("X")) >> +qi::xdigit];
+qi::rule<Iterator, std::string()> g_intLit = g_decimalLit | g_hexLit | g_octalLit;
+
+qi::rule<Iterator, std::string()> g_exponent = qi::hold[char_("eE") >> (-char_("+-")) >> +qi::digit];
+qi::rule<Iterator, std::string()> g_floatLit = qi::hold[(+qi::digit >> char_(".") >> *qi::digit >> qi::hold[-g_exponent])] | qi::hold[(+qi::digit >> g_exponent)] | qi::hold[(char_(".") >> +qi::digit >> -g_exponent)] | (char_("i") >> char_("n") >> char_("f")) | (char_("n") >> char_("a") >> char_("n"));
+
+qi::rule<Iterator, std::string()> g_boolLit = (char_("f") >> char_("a") >> char_("l") >> char_("s") >> char_("e")) | (char_("t") >> char_("r") >> char_("u") >> char_("e"));
+qi::rule<Iterator, std::string()> g_hexEscape = char_("\\") >> char_("xX") >> qi::xdigit >> qi::xdigit;
+qi::rule<Iterator, std::string()> g_octalEscape = char_("\\") >> char_("0-7") >> char_("0-7") >> char_("0-7");
+qi::rule<Iterator, std::string()> g_charEscape = char_("\\") >> char_("abfnrtv\\\"\'");
+qi::rule<Iterator, std::string()> g_charValue1 = qi::hold[g_hexEscape] | qi::hold[g_octalEscape] | qi::hold[g_charEscape] | (qi::char_ - (qi::char_("\"\n\\") | qi::char_('\0')));
+qi::rule<Iterator, std::string()> g_charValue2 = qi::hold[g_hexEscape] | qi::hold[g_octalEscape] | qi::hold[g_charEscape] | (qi::char_ - (qi::char_("\'\n\\") | qi::char_('\0')));
+
+qi::rule<Iterator, std::string()> g_strLit = qi::hold[(char_("\"") >> *g_charValue1 >> char_("\""))] | qi::hold[(char_("\'") >> *g_charValue2 >> char_("\'"))];
+
+qi::rule<Iterator, std::string()> g_ident = qi::alpha >> *(qi::alpha | qi::digit | char_("_"));
+qi::rule<Iterator, std::vector<std::string>()> g_fullIdent = g_ident >> *(qi::lit(".") >> g_ident);
+qi::rule<Iterator, std::vector<std::string>()> g_messageEnumType = -(qi::lit(".") >> qi::attr(std::string{})) >> g_fullIdent;
+
+qi::rule<Iterator, std::string(), skip_grammar> g_syntax = qi::lit("syntax") > qi::lit('=') > g_strLit > qi::lit(';');
+qi::rule<Iterator, GImport(), skip_grammar> g_import = qi::lit("import") > -((qi::lit("public") >> qi::attr(1)) | (qi::lit("weak") >> qi::attr(2))) > g_strLit > qi::lit(';');
+qi::rule<Iterator, std::vector<std::string>(), skip_grammar> g_package = qi::lit("package") > g_fullIdent > qi::lit(';');
 
 
 int main()
 {
-    test2("\"abcde\"");
-    test2("\"abc");
-    test2("\'ab\\x65c\'");
-    test2("\'ab\\x6Uc\'");
-    test2("\'ab\\n\\777\"\'");
-    test2(" /* comment */ syntax = \"proto2\" ; \"aha\"     zlo ");
+	g_ident.name("Identifier");
+	g_fullIdent.name("Fully quialified identifier");
+	test_parse("123", g_intLit, "123");
+	test_parse("12A", g_intLit, "12");
+	test_parse("0", g_intLit, "0");
+	test_parse("0x123", g_intLit, "0x123");
+	test_parse("0X12Az", g_intLit, "0X12A");
+	test_parse("0xZ", g_intLit, "0");
+	test_parse("0123", g_intLit, "0123");
+	test_parse("0012A", g_intLit, "0012");
+	test_parse("0.14e+13", g_floatLit, "0.14e+13");
+	test_parse(".14e-0", g_floatLit, ".14e-0");
+	test_parse("14.", g_floatLit, "14.");
+	test_parse("truee", g_boolLit, "true");
+	test_parse("false", g_boolLit, "false");
+	test_parse("truka", g_boolLit, "");
+    test_parse("\"abcde\"", g_strLit, "\"abcde\"");
+    test_parse("\"abc", g_strLit, "");
+    test_parse("\'ab\\x65c\'", g_strLit, "\'ab\\x65c\'");
+    test_parse("\'ab\\x6Uc\'", g_strLit, "");
+    test_parse("\'ab\\n\\777\"\';", g_strLit, "\'ab\\n\\777\"\'");
+	test_parse("Arka.", g_ident, "Arka");
+	test_parse("1ku", g_ident, "");
+	test_parse("s_10+", g_ident, "s_10");
+	test_parse("Arka.", g_fullIdent, "Arka");
+	test_parse("a.ku.1ku", g_fullIdent, "a.ku");
+	test_parse(".swe", g_fullIdent, "");
+	test_parse("Arka.", g_messageEnumType, "Arka");
+	test_parse("a.ku.1ku", g_messageEnumType, "a.ku");
+	test_parse(".sw_e.n.1", g_messageEnumType, ".sw_e.n");
+    test_phrase_parse("import \"hren\";z", g_import, "import \"hren\";");
+    test_phrase_parse("import public \"hren\" ;", g_import, "import public \"hren\" ;");
+    test_phrase_parse(" import weak \"hren\" ; q", g_import, " import weak \"hren\" ; ");
+    test_phrase_parse("import wea \"hren\";", g_import, "");
+    test_phrase_parse("syntax = \"proto2\" ; q", g_syntax, "syntax = \"proto2\" ; ");
+    test_phrase_parse(" syntax=\'proto5\' ; q", g_syntax, " syntax=\'proto5\' ; ");
+    test_phrase_parse("syntax = \"proto2 ; q", g_syntax, "");
+    test_phrase_parse(" syntax=proto3\";  ", g_syntax, "");
+
+    test_phrase_parse("package hren ;", g_package, "package hren ;");
+    test_phrase_parse("package hren.vam ;", g_package, "package hren.vam ;");
+    test_phrase_parse("package zlo.va.1 ;", g_package, "");
+    test_phrase_parse("package .hren ;", g_package, "");
+    test_phrase_parse("package 1;", g_package, "");
+
+/*	test2(example1);
+    test2("syntax = \"proto2\" ; \"aha\"     zlo ");
     test2(" syntax= \"proto3\"; \"aha\" ");
     test2("01.");
     test2("1");
@@ -217,12 +307,7 @@ int main()
 	test2("012.3s");
     test2("inf0x12");
     test2("in0x12");
-    test2(".012e");
-
-	test1("Hr.en123");
-	test1("Hren.*123");
-	test1(".Zopa .Hren.*123");
-	test1("1Hren");
+    test2(".012e");*/
 
 /*    std::cout
         << "Give me an employee of the form :"
