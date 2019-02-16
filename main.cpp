@@ -9,6 +9,7 @@
 #include <boost/fusion/include/std_pair.hpp>
 #include <boost/fusion/include/io.hpp>
 #include <boost/core/demangle.hpp>
+#include <boost/variant/recursive_variant.hpp>
 
 #include <iostream>
 #include <string>
@@ -91,32 +92,126 @@ BOOST_FUSION_ADAPT_STRUCT(GImport,
 	(std::string, filename)
 )
 
-struct GPackage {
-
-};
 struct GOption {
-
+    std::string option_name;
+    std::string constant;
 };
-struct GMessage {
 
+std::ostream& operator<<(std::ostream& stream, const GOption& val) {
+    return stream << "GOption{" << val.option_name << "|" << val.constant << "}";
+ }
+
+BOOST_FUSION_ADAPT_STRUCT(GOption,
+	(std::string, option_name)
+	(std::string, constant)
+)
+
+
+struct GField {
+	int kind = 0;
+    std::string type;
+    std::string name;
+    std::string number;
+    std::vector<GOption> options;
 };
+
+std::ostream& operator<<(std::ostream& stream, const GField& val) {
+    return stream << "GField{" << val.kind << "|" << val.type << "|" << val.name << "|" << val.number << "|" << val.options.size() << "}";
+ }
+
+BOOST_FUSION_ADAPT_STRUCT(GField,
+	(int, kind)
+	(std::string, type)
+	(std::string, name)
+	(std::string, number)
+	(std::vector<GOption>, options)
+)
+
+struct GEnumField {
+	std::string name;
+	std::string value;
+	std::vector<GOption> options;
+};
+
+struct GEmptyStatement {};
+
 struct GEnum {
-
-};
-struct GExtend {
-
-};
-struct GService {
-
+	typedef boost::variant<GEnumField, GOption, GEmptyStatement> GEnumFieldVariant;
+	std::string name;
+	std::vector<GEnumFieldVariant> fields;
 };
 
-struct convert_f {
-    LiteralType operator()(const std::string & text) const {
-    	return LiteralType{1, text};
-    }
+std::ostream& operator<<(std::ostream& stream, const GEnumField& val) {
+    return stream << "GEnumField{" << val.name << "|" << val.value << "|" << val.options.size() << "}";
+ }
+
+std::ostream& operator<<(std::ostream& stream, const GEnum& val) {
+	stream << "GEnum{" << val.name << "|";
+	for(const auto & s : val.fields)
+		if(s.type() == typeid(GEnumField))
+			stream << boost::get<GEnumField>(s) << "|";
+		else if(s.type() == typeid(GOption))
+			stream << boost::get<GOption>(s) << "|";
+    return stream << "}";
+ }
+
+BOOST_FUSION_ADAPT_STRUCT(GEnumField,
+	(std::string, name)
+	(std::string, value)
+	(std::vector<GOption>, options)
+)
+BOOST_FUSION_ADAPT_STRUCT(GEnum,
+	(std::string, name)
+	(std::vector<GEnum::GEnumFieldVariant>, fields)
+)
+
+struct GMessage;
+
+typedef boost::variant<boost::recursive_wrapper<GMessage>, GField, GEnum, GOption, GEmptyStatement> GMessageFieldVariant;
+
+struct GMessage {
+	std::string name;
+	std::vector<GMessageFieldVariant> fields;
 };
 
-boost::phoenix::function<convert_f> convert;
+struct PrintVisitor {
+	std::ostream& stream;
+	explicit PrintVisitor(std::ostream& stream):stream(stream) {}
+	void operator()(GField const& s) const
+	{
+		stream << s;
+	}
+	void operator()(GEnum const& s) const
+	{
+		stream << s;
+	}
+	void operator()(GOption const& s) const
+	{
+		stream << s;
+	}
+	void operator()(GMessage const& s) const;
+	void operator()(GEmptyStatement const& s) const
+	{}
+};
+
+std::ostream& operator<<(std::ostream& stream, const GMessage& val) {
+	stream << "GMessage{" << val.name << "|";
+	for(const auto & s : val.fields){
+		boost::apply_visitor(PrintVisitor{stream}, s);
+ 		stream << "|";
+	}
+    return stream << "}";
+ }
+
+void PrintVisitor::operator()(GMessage const& s) const
+{
+	stream << s;
+}
+
+BOOST_FUSION_ADAPT_STRUCT(GMessage,
+	(std::string, name)
+	(std::vector<GMessageFieldVariant>, fields)
+)
 
 struct skip_grammar : qi::grammar<Iterator> {
     qi::rule<Iterator> start;
@@ -129,36 +224,6 @@ struct skip_grammar : qi::grammar<Iterator> {
     qi::rule<Iterator> block_comment, single_line_comment, skipper;
 };
 
-/*void test2(std::string str){
-
-
-//    qi::rule<Iterator, LiteralType()> g_emptyStatement;
-//    qi::rule<Iterator, LiteralType()> g_constant;  >> qi::attr(2) >>
-//    qi::rule<Iterator, std::pair<boost::variant<int>, LiteralType>(), skip_grammar> g_import = ascii::string("import") | -((ascii::string("weak") >> qi::attr(1)) | (ascii::string("public") >> qi::attr(2))) >> g_strLit >> spirit::lit(';');
-//            proto = syntax { import | package | option | message | enum | extend | service | emptyStatement };
-
-//    qi::rule<Iterator, std::vector<std::pair<boost::variant<int>, LiteralType>>(), skip_grammar> g_protofile = g_syntax >> *(g_import);// >> spirit::lit('=') >> (ascii::string("\"proto2\"") | ascii::string("\'proto2\'")) >> spirit::lit(';');
-//    qi::rule<Iterator, std::vector<GImport>(), skip_grammar> g_protofile = g_syntax >> *g_import;// >> spirit::lit('=') >> (ascii::string("\"proto2\"") | ascii::string("\'proto2\'")) >> spirit::lit(';');
-
-//    display_attribute_of_parser(g_protofile);
-//    std::cout << boost::core::demangle(typeid(LiteralType).name()) << std::endl;
-//	std::vector<GImport> data;
-	LiteralType data;
-	Iterator first = str.begin();
-    skip_grammar ws;
-    bool ok = phrase_parse(first, str.end(), g_import, ws, data);
-    if (ok) {
-//    	for(const auto & val : data)
-        std::cout << "Parse success " << str << " -> {" <<  data.second << "}"; // (data.kind ? data.kind.get() : 0) << "|" <<
-    } else {
-        std::cout << "Parse failed" << str;
-    }
-
-    if (first != str.end()) {
-        std::cout << "Remaining: '" << std::string(first, str.end()) << "'\n";
-    }
-    std::cout << std::endl;
-}*/
 
 template<class R>
 void test_parse(std::string str, R & r, std::string must_be){
@@ -204,12 +269,6 @@ void test_phrase_parse(std::string str, R & r, std::string must_be){
 	if(std::string(str.begin(), first) != must_be)
 		std::cout << "====BAD, actual {" << std::string(str.begin(), first) << "}" << std::endl;
 }
-//const std::string example1 = R"(
-// import "hren";
-//)";
-// syntax = "proto2" ;
-// import weak "hren";
-// import public "hren";
 
 qi::rule<Iterator, std::string()> g_decimalLit = char_("1-9") >> *qi::digit;
 qi::rule<Iterator, std::string()> g_octalLit = char_("0") >> *char_("0-7");
@@ -229,16 +288,44 @@ qi::rule<Iterator, std::string()> g_charValue2 = qi::hold[g_hexEscape] | qi::hol
 qi::rule<Iterator, std::string()> g_strLit = qi::hold[(char_("\"") >> *g_charValue1 >> char_("\""))] | qi::hold[(char_("\'") >> *g_charValue2 >> char_("\'"))];
 
 qi::rule<Iterator, std::string()> g_ident = qi::alpha >> *(qi::alpha | qi::digit | char_("_"));
-qi::rule<Iterator, std::vector<std::string>()> g_fullIdent = g_ident >> *(qi::lit(".") >> g_ident);
-qi::rule<Iterator, std::vector<std::string>()> g_messageEnumType = -(qi::lit(".") >> qi::attr(std::string{})) >> g_fullIdent;
+qi::rule<Iterator, std::string()> g_fullIdent = g_ident >> *qi::hold[(qi::char_(".") >> g_ident)];
+qi::rule<Iterator, std::string()> g_messageEnumType = -qi::char_(".") >> g_fullIdent;
 
 qi::rule<Iterator, std::string(), skip_grammar> g_syntax = qi::lit("syntax") > qi::lit('=') > g_strLit > qi::lit(';');
 qi::rule<Iterator, GImport(), skip_grammar> g_import = qi::lit("import") > -((qi::lit("public") >> qi::attr(1)) | (qi::lit("weak") >> qi::attr(2))) > g_strLit > qi::lit(';');
-qi::rule<Iterator, std::vector<std::string>(), skip_grammar> g_package = qi::lit("package") > g_fullIdent > qi::lit(';');
+qi::rule<Iterator, std::string(), skip_grammar> g_package = qi::lit("package") > g_fullIdent > qi::lit(';');
 
+qi::rule<Iterator, std::string(), skip_grammar> g_optionName = qi::hold[g_ident | (qi::char_("(") >> g_fullIdent >> qi::char_(")"))] >> qi::hold[-(qi::char_(".") >> g_ident)];
+
+qi::rule<Iterator, std::string(), skip_grammar> g_constant = g_fullIdent | (-qi::char_("-+") >> g_intLit)  | (-qi::char_("-+") >> g_floatLit) | g_strLit | g_boolLit;
+
+qi::rule<Iterator, GOption(), skip_grammar> g_option = qi::lit("option") > g_optionName > qi::lit('=') > g_constant > qi::lit(';');
+
+qi::rule<Iterator, GOption(), skip_grammar> g_fieldOption = g_optionName > qi::lit('=') > g_constant;
+qi::rule<Iterator, std::vector<GOption>(), skip_grammar> g_fieldOptions = g_fieldOption >> *(qi::lit(",") >> g_fieldOption);
+qi::rule<Iterator, int(), skip_grammar> g_fieldLabel = (qi::lit("required") >> qi::attr(1)) | (qi::lit("optional") >> qi::attr(2)) | (qi::lit("repeated") >> qi::attr(3));
+qi::rule<Iterator, GField(), skip_grammar> g_field = g_fieldLabel > g_fullIdent > g_ident > qi::lit('=') > g_intLit > ((qi::lit("[") > g_fieldOptions > qi::lit("]")) | qi::attr(std::vector<GOption>{})) > qi::lit(';');
+
+qi::rule<Iterator, GEnumField(), skip_grammar> g_enumField = g_ident > qi::lit('=') > g_intLit > ((qi::lit("[") > g_fieldOptions > qi::lit("]")) | qi::attr(std::vector<GOption>{})) > qi::lit(';');
+qi::rule<Iterator, GEnum(), skip_grammar> g_enum = qi::lit("enum") > g_ident > qi::lit('{') > *(g_option | g_enumField | (qi::lit(";") >> qi::attr(GEmptyStatement{}))) > qi::lit('}');
+
+// Those ideas below were all bad ideas, we'll just skip them.
+// TODO - group
+// TODO - oneof
+// TODO - map
+// TODO - extensions
+// TODO - ranges
+// TODO - range
+// TODO - reserved
+// TODO - extend
+// TODO - service
 
 int main()
 {
+	qi::rule<Iterator, GMessage(), skip_grammar> g_message;
+
+	g_message = qi::lit("message") > g_ident > qi::lit('{') > *(g_field | g_enum | g_message | g_option | (qi::lit(";") >> qi::attr(GEmptyStatement{}))) > qi::lit('}');
+
 	g_ident.name("Identifier");
 	g_fullIdent.name("Fully quialified identifier");
 	test_parse("123", g_intLit, "123");
@@ -284,6 +371,25 @@ int main()
     test_phrase_parse("package .hren ;", g_package, "");
     test_phrase_parse("package 1;", g_package, "");
 
+    test_phrase_parse("abc1", g_optionName, "abc1");
+    test_phrase_parse("abc.def", g_optionName, "abc");
+    test_phrase_parse("( hr )", g_optionName, "( hr )");
+    test_phrase_parse("( hr.as ).as", g_optionName, "( hr.as ).as");
+    test_phrase_parse("( hr.as.1 )", g_optionName, "");
+
+    test_phrase_parse("option abc1 = \"zz\";", g_option, "option abc1 = \"zz\";");
+    test_phrase_parse("option (x.a) = -5;", g_option, "option (x.a) = -5;");
+
+    test_phrase_parse("optional foo.bar nested_message = 2;", g_field, "optional foo.bar nested_message = 2;");
+    test_phrase_parse("repeated int32 samples = 4 [packed=true];", g_field, "repeated int32 samples = 4 [packed=true];");
+
+    test_phrase_parse("STARTED = 1;", g_enumField, "STARTED = 1;");
+    test_phrase_parse("RUNNING = 2 [(custom_option) = \"hello world\"];", g_enumField, "RUNNING = 2 [(custom_option) = \"hello world\"];");
+
+    test_phrase_parse("enum EnumAllowingAlias {}", g_enum, "enum EnumAllowingAlias {}");
+    test_phrase_parse("enum EnumAllowingAlias {UNKNOWN = 0; option allow_alias = true; ; STARTED = 1;};", g_enum, "enum EnumAllowingAlias {UNKNOWN = 0; option allow_alias = true; ; STARTED = 1;}");
+
+    test_phrase_parse("message Outer { required int64 ival = 1; enum EnumAllowingAlias {A = 0; B = 1;} };", g_message, "message Outer { required int64 ival = 1; enum EnumAllowingAlias {A = 0; B = 1;} }");
 /*	test2(example1);
     test2("syntax = \"proto2\" ; \"aha\"     zlo ");
     test2(" syntax= \"proto3\"; \"aha\" ");
