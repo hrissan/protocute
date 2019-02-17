@@ -166,6 +166,8 @@ qi::rule<Iterator, GMessage(), skip_grammar> g_message;
 
 qi::rule<Iterator, GProtoFile(), skip_grammar> g_protoFile;
 
+qi::rule<Iterator, GEmptyStatement(), skip_grammar> g_extend = qi::omit[ qi::lit("extend") > g_messageEnumType > qi::lit('{') > *(g_field | (qi::lit(";") >> qi::attr(GEmptyStatement{}))) > qi::lit('}')] >> qi::attr(GEmptyStatement{});
+
 // Those ideas below were all bad ideas, we'll just skip them.
 // TODO - group
 // TODO - oneof
@@ -183,9 +185,9 @@ void prepare_rules(){
 	if(prepared)
 		return;
 	prepared = true;
-	g_message = qi::lit("message") > g_ident > qi::lit('{') > *(g_field | g_enum | g_message | g_option | (qi::lit(";") >> qi::attr(GEmptyStatement{}))) > qi::lit('}');
+	g_message = qi::lit("message") > g_ident > qi::lit('{') > *(g_field | g_enum | g_message | g_extend | g_option | (qi::lit(";") >> qi::attr(GEmptyStatement{}))) > qi::lit('}');
 
-	g_protoFile = g_syntax > *(g_import | g_package | g_option | g_enum | g_message | (qi::lit(";") >> qi::attr(GEmptyStatement{})));
+	g_protoFile = g_syntax > *(g_import | g_package | g_option | g_enum | g_message | g_extend | (qi::lit(";") >> qi::attr(GEmptyStatement{})));
 }
 
 bool parse_proto(const std::string & str, GProtoFile & result){
