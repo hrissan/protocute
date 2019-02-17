@@ -1,6 +1,7 @@
 #include <string>
 #include <vector>
 #include <cstdint>
+#include <stdexcept>
 
 namespace protocute {
 	
@@ -37,7 +38,7 @@ inline void write_varint(uint64_t v, std::string & s){
 }
 
 inline iterator skip(iterator * s, iterator e, size_t len){
-	if(e - *s > len)
+	if(static_cast<size_t>(e - *s) > len)
 		throw std::runtime_error("protocute skip underflow");
 	iterator result = *s;
 	*s += len;
