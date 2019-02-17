@@ -327,8 +327,7 @@ struct CodeGenerator {
 			cpp << "\t\tfor(const auto & vv : v." << s.name <<")\n";
 			ref = "vv";
 			n_tabs += 1;
-		}
-		if( !found_cn->enum_default_value.empty() ){
+		}else if( !found_cn->enum_default_value.empty() ){
 			if(found_cn->enum_default_value == "false"){
 				cpp << std::string(n_tabs, '\t') << "if("<< ref << ")\n";
 			}else if(found_cn->enum_default_value == "std::string{}"){
