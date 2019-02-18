@@ -38,6 +38,14 @@ inline void write_varint(uint64_t v, std::string & s){
 	s.push_back(static_cast<char>(v));
 }
 
+inline uint64_t zigzag(int64_t val){
+	return val >= 0 ? uint64_t(val) << 1 : (uint64_t(-(val + 1)) << 1) | 1;
+}
+
+inline int64_t zagzig(uint64_t val){
+	return (val & 1) ? -int64_t(val >> 1) - 1 : int64_t(val >> 1);
+}
+
 inline iterator skip(iterator * s, iterator e, size_t len){
 	if(static_cast<size_t>(e - *s) > len)
 		throw std::runtime_error("protocute skip underflow");
@@ -123,20 +131,49 @@ void read_packed_varint(std::vector<T> & v, iterator * s, iterator e) {
 }
 
 template<typename T>
-void read_packed_fixed(std::vector<T> & v, iterator * s, iterator e) {
+void read_packed_s_varint(std::vector<T> & v, iterator * s, iterator e) {
 	auto len = read_varint_t<size_t>(s, e);
 	auto p = skip(s, e, len);
 	while(p != *s){
-		v.push_back(read_fixed<T>(&p, *s));
+		v.push_back(static_cast<T>(zagzig(read_varint(&p, *s))));
 	}
 }
-
-inline uint64_t zigzag(int64_t val){
-	return val >= 0 ? uint64_t(val) << 1 : (uint64_t(-(val + 1)) << 1) | 1;
+template<typename T>
+void write_packed_varint(unsigned field_number, const std::vector<T> & v, std::string & s) {
+	if(v.empty())
+		return;
+	std::string pack;
+	for(const auto & vv : v)
+		write_varint(static_cast<uint64_t>(vv), pack);
+	write_field_string(field_number, pack, s);
+}
+template<typename T>
+void write_packed_s_varint(unsigned field_number, const std::vector<T> & v, std::string & s) {
+	if(v.empty())
+		return;
+	std::string pack;
+	for(const auto & vv : v)
+		write_varint(zigzag(vv), pack);
+	write_field_string(field_number, pack, s);
+}
+template<typename T>
+void write_packed_fixed(unsigned field_number, const std::vector<T> & v, std::string & s) {
+	if(v.empty())
+		return;
+	write_varint((field_number << 3) | 2, s);
+	write_varint(v.size() * sizeof(T), s);
+	s.append(reinterpret_cast<const char *>(v.data()), v.size() * sizeof(T));
 }
 
-inline int64_t zagzig(uint64_t val){
-	return (val & 1) ? -int64_t(val >> 1) - 1 : int64_t(val >> 1);
+template<typename T>
+void read_packed_fixed(std::vector<T> & v, iterator * s, iterator e) {
+	auto len = read_varint_t<size_t>(s, e);
+	auto p = skip(s, e, len);
+	if(len % sizeof(T) != 0)
+		throw std::runtime_error("packed fixed field has uneven size");
+	auto count = len / sizeof(T);
+	v.resize(v.size() + count);
+	memcpy(v.data() + v.size() - count, &*p, len);
 }
 
 }
