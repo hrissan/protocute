@@ -26,8 +26,9 @@ inline uint64_t read_varint(iterator * s, iterator e){
 	}
 	return result;
 }
-inline size_t read_varint_size_t(iterator * s, iterator e){
-	return static_cast<size_t>(read_varint(s, e));
+template<class T>
+inline T read_varint_t(iterator * s, iterator e){
+	return static_cast<T>(read_varint(s, e));
 }
 inline void write_varint(uint64_t v, std::string & s){
 	while (v >= 0x80) {
@@ -46,7 +47,7 @@ inline iterator skip(iterator * s, iterator e, size_t len){
 }
 
 inline std::string read_string(iterator * s, iterator e){
-	auto len = read_varint_size_t(s, e);
+	auto len = read_varint_t<size_t>(s, e);
 	auto p = skip(s, e, len);
 	std::string str{p, *s};
 	return str;
@@ -57,25 +58,29 @@ inline void write_field_varint(unsigned field_number, uint64_t v, std::string & 
 	write_varint(v, s);
 }
 
-//inline int64_t read_any_int(unsigned field_type, iterator * s, iterator e){
-//	if(field_type == )
-//	return 0;
-//}
-//inline uint64_t read_any_unsigned(unsigned field_type, iterator * s, iterator e){
-//	return 0;
-//}
-
-//inline void write_field_fixed32(unsigned field_number, uint32_t v, std::string & s){
-//	write_varint((field_number << 3) | 0, s);
-//	write_varint(v, s);
-//}
-
 inline void write_field_string(unsigned field_number, const std::string & v, std::string & s){
 	write_varint((field_number << 3) | 2, s);
 	write_varint(v.size(), s);
 	s += v;
 }
 
+inline void write_field_fixed32(unsigned field_number, const void * v, std::string & s){
+	write_varint((field_number << 3) | 5, s);
+	s.append(reinterpret_cast<const char *>(v), 4);
+}
+
+inline void write_field_fixed64(unsigned field_number, const void * v, std::string & s){
+	write_varint((field_number << 3) | 1, s);
+	s.append(reinterpret_cast<const char *>(v), 8);
+}
+
+template<class T>
+inline T read_fixed(iterator * s, iterator e){
+	auto p = skip(s, e, sizeof(T));
+	T val;
+	memcpy(&val, &*p, sizeof(T));
+	return val;
+}
 
 inline void skip_by_type(unsigned field_type, iterator * s, iterator e){
 	switch (field_type) {
@@ -86,7 +91,7 @@ inline void skip_by_type(unsigned field_type, iterator * s, iterator e){
 			skip(s, e, 8);
 			break;
 		case 2:{
-			auto len = read_varint_size_t(s, e);
+			auto len = read_varint_t<size_t>(s, e);
 			skip(s, e, len);
 			break;
 		}
@@ -103,9 +108,35 @@ inline void skip_by_type(unsigned field_type, iterator * s, iterator e){
 
 template<typename T>
 void read_message(T & v, iterator * s, iterator e) {
-	auto len = read_varint_size_t(s, e);
+	auto len = read_varint_t<size_t>(s, e);
 	auto p = skip(s, e, len);
 	read(v, p, *s);
+}
+
+template<typename T>
+void read_packed_varint(std::vector<T> & v, iterator * s, iterator e) {
+	auto len = read_varint_t<size_t>(s, e);
+	auto p = skip(s, e, len);
+	while(p != *s){
+		v.push_back(read_varint_t<T>(&p, *s));
+	}
+}
+
+template<typename T>
+void read_packed_fixed(std::vector<T> & v, iterator * s, iterator e) {
+	auto len = read_varint_t<size_t>(s, e);
+	auto p = skip(s, e, len);
+	while(p != *s){
+		v.push_back(read_fixed<T>(&p, *s));
+	}
+}
+
+inline uint64_t zigzag(int64_t val){
+	return val >= 0 ? uint64_t(val) << 1 : (uint64_t(-(val + 1)) << 1) | 1;
+}
+
+inline int64_t zagzig(uint64_t val){
+	return (val & 1) ? -int64_t(val >> 1) - 1 : int64_t(val >> 1);
 }
 
 }

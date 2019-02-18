@@ -272,29 +272,50 @@ struct CodeGenerator {
 	}
 	void generate_field_read(GField const& s){
 		auto found_cn = resolve_type(s.type);
-		cpp << "if(field_number == " << s.number << " && field_type == ";
 		std::string ass = "\t\t\t\tv." + s.name + " = ";
 		std::string ass2 = "";
 		if( s.kind == GFieldKind::REPEATED){
 			ass = "\t\t\t\tv." + s.name + ".push_back(";
 			ass2 = ")";
+			// TODO - packed enums, bools, floats, doubles
+			if( found_cn->type == Namespace::ENUM || found_cn->fullname == "bool" || s.type == "uint32" || s.type == "int32" || s.type == "sint32" || s.type == "uint64" || s.type == "int64" || s.type == "sint64"){
+				cpp << "if(field_number == " << s.number << " && field_type == 2)\n";
+				cpp << "\t\t\t\tread_packed_varint(v." << s.name << ", &s, e);\n\t\t\telse ";
+			}
+			if( s.type == "sfixed32" || s.type == "fixed32" || s.type == "sfixed64" || s.type == "fixed64" ){
+				cpp << "if(field_number == " << s.number << " && field_type == 2)\n";
+				cpp << "\t\t\t\tread_packed_fixed(v." << s.name << ", &s, e);\n\t\t\telse ";
+			}
 		}
+		cpp << "if(field_number == " << s.number << " && field_type == ";
 		if(found_cn->fullname == "uint32_t")
-			cpp << "0)\n" << ass << "static_cast<uint32_t>(read_varint(&s, e))" << ass2 << ";\n\t\t\t";
+			cpp << "0)\n" << ass << "read_varint_t<uint32_t>(&s, e)" << ass2 << ";\n\t\t\t";
 		else if(found_cn->fullname == "uint64_t")
 			cpp << "0)\n" << ass << "read_varint(&s, e)" << ass2 << ";\n\t\t\t";
+		else if(s.type == "sfixed32")
+			cpp << "0)\n" << ass << "read_fixed<int32_t>(&s, e)" << ass2 << ";\n\t\t\t";
+		else if(s.type == "fixed32")
+			cpp << "0)\n" << ass << "read_fixed<uint32_t>(&s, e)" << ass2 << ";\n\t\t\t";
 		else if(s.type == "sint32")
-			cpp << "0)\n" << ass << "unzip_sint32(read_varint(&s, e))" << ass2 << ";\n\t\t\t";
+			cpp << "0)\n" << ass << "static_cast<int32_t>(zagzig(read_varint(&s, e)))" << ass2 << ";\n\t\t\t";
 		else if(found_cn->fullname == "int32_t")
-			cpp << "0)\n" << ass << "static_cast<int32_t>(static_cast<int64_t>(read_varint(&s, e)))" << ass2 << ";\n\t\t\t";
+			cpp << "0)\n" << ass << "read_varint_t<int32_t>(&s, e)" << ass2 << ";\n\t\t\t";
+		else if(s.type == "sfixed64")
+			cpp << "0)\n" << ass << "read_fixed<int64_t>(&s, e)" << ass2 << ";\n\t\t\t";
+		else if(s.type == "fixed64")
+			cpp << "0)\n" << ass << "read_fixed<uint64_t>(&s, e)" << ass2 << ";\n\t\t\t";
 		else if(s.type == "sint64")
-			cpp << "0)\n" << ass << "unzip_sint64(read_varint(&s, e))" << ass2 << ";\n\t\t\t";
+			cpp << "0)\n" << ass << "zagzig(read_varint(&s, e))" << ass2 << ";\n\t\t\t";
 		else if(found_cn->fullname == "int64_t")
-			cpp << "0)\n" << ass << "static_cast<int64_t>(read_varint(&s, e))" << ass2 << ";\t\t\t\t";
+			cpp << "0)\n" << ass << "read_varint_t<int64_t>(&s, e)" << ass2 << ";\t\t\t\t";
 		else if(found_cn->fullname == "bool")
 			cpp << "0)\n" << ass << "read_varint(&s, e) != 0" << ass2 << ";\n\t\t\t";
+		else if(found_cn->fullname == "float")
+			cpp << "0)\n" << ass << "read_fixed<float>(&s, e)" << ass2 << ";\n\t\t\t";
+		else if(found_cn->fullname == "double")
+			cpp << "0)\n" << ass << "read_fixed<double>(&s, e)" << ass2 << ";\n\t\t\t";
 		else if(found_cn->type == Namespace::ENUM)
-			cpp << "0)\n" << ass << "static_cast<" << found_cn->fullname << ">(read_varint(&s, e))" << ass2 << ";\n\t\t\t";
+			cpp << "0)\n" << ass << "read_varint_t<" << found_cn->fullname << ">(&s, e)" << ass2 << ";\n\t\t\t";
 		else if(found_cn->fullname == "std::string")
 			cpp << "2)\n" << ass << "read_string(&s, e)" << ass2 << ";\n\t\t\t";
 		else {
@@ -306,17 +327,6 @@ struct CodeGenerator {
 			}
 		}
 		cpp << "else ";
-//		if(field_number == 3 && field_type == 0)
-//			v.field_a = static_cast<int>(read_varint(&s, e));
-//		else if(field_number == 4 && field_type == 2)
-//			v.field_b = read_string(&s, e);
-//		else if(field_number == 5 && field_type == 2)
-//			read_message(v.field_c, &s, e);
-//		else if(field_number == 6 && field_type == 0)
-//			v.field_d.push_back(static_cast<int>(read_varint(&s, e)));
-//		else if(field_number == 6 && field_type == 2)
-//			v.field_d.push_back(static_cast<int>(read_varint(&s, e)));
-//		else
 	}
 	void generate_field_write(GField const& s){
 		auto found_cn = resolve_type(s.type);
@@ -327,7 +337,7 @@ struct CodeGenerator {
 			cpp << "\t\tfor(const auto & vv : v." << s.name <<")\n";
 			ref = "vv";
 			n_tabs += 1;
-		}else if( !found_cn->enum_default_value.empty() ){
+		}else if( s.kind != GFieldKind::REQUIRED && !found_cn->enum_default_value.empty() ){
 			if(found_cn->enum_default_value == "false"){
 				cpp << std::string(n_tabs, '\t') << "if("<< ref << ")\n";
 			}else if(found_cn->enum_default_value == "std::string{}"){
@@ -342,15 +352,23 @@ struct CodeGenerator {
 		if(found_cn->fullname == "uint32_t" || found_cn->fullname == "uint64_t")
 			cpp << std::string(n_tabs, '\t') << "write_field_varint(" << s.number << ", " << ref << ", s);\n";
 		else if(s.type == "sint32")
-			cpp << std::string(n_tabs, '\t') << "write_field_varint(" << s.number << ", zip_sint32(" << ref << "), s);\n";
+			cpp << std::string(n_tabs, '\t') << "write_field_varint(" << s.number << ", zigzag(" << ref << "), s);\n";
+		else if(s.type == "sfixed32" || s.type == "fixed32")
+			cpp << std::string(n_tabs, '\t') << "write_field_fixed32(" << s.number << ", &" << ref << ", s);\n";
 		else if(found_cn->fullname == "int32_t")
 			cpp << std::string(n_tabs, '\t') << "write_field_varint(" << s.number << ", static_cast<uint64_t>(static_cast<int64_t>(" << ref << ")), s);\n";
 		else if(s.type == "sint64")
-			cpp << std::string(n_tabs, '\t') << "write_field_varint(" << s.number << ", zip_sint64(" << ref << "), s);\n";
+			cpp << std::string(n_tabs, '\t') << "write_field_varint(" << s.number << ", zigzag(" << ref << "), s);\n";
+		else if(s.type == "sfixed64" || s.type == "fixed64")
+			cpp << std::string(n_tabs, '\t') << "write_field_fixed64(" << s.number << ", &" << ref << ", s);\n";
 		else if(found_cn->fullname == "int64_t")
 			cpp << std::string(n_tabs, '\t') << "write_field_varint(" << s.number << ", static_cast<uint64_t>(" << ref << "), s);\n";
 		else if(found_cn->fullname == "bool")
 			cpp << std::string(n_tabs, '\t') << "write_field_varint(" << s.number << ", " << ref << " ? 1 : 0, s);\n";
+		else if(found_cn->fullname == "float")
+			cpp << std::string(n_tabs, '\t') << "write_field_fixed32(" << s.number << ", &" << ref << ", s);\n";
+		else if(found_cn->fullname == "double")
+			cpp << std::string(n_tabs, '\t') << "write_field_fixed64(" << s.number << ", &" << ref << ", s);\n";
 		else if(found_cn->type == Namespace::ENUM)
 			cpp << std::string(n_tabs, '\t') << "write_field_varint(" << s.number << ", static_cast<uint64_t>(" << ref << "), s);\n";
 		else if(found_cn->fullname == "std::string")
