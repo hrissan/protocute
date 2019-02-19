@@ -47,7 +47,8 @@ inline int64_t zagzig(uint64_t val){
 }
 
 inline iterator skip(iterator * s, iterator e, size_t len){
-	if(static_cast<size_t>(e - *s) > len)
+	size_t remains = static_cast<size_t>(e - *s);
+	if(remains < len)
 		throw std::runtime_error("protocute skip underflow");
 	iterator result = *s;
 	*s += len;
