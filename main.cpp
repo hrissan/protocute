@@ -4,6 +4,7 @@
 #include <iostream>
 #include <fstream>
 #include <string>
+#include <map>
 #include <complex>
 #include <unistd.h>
 #include <sstream>
@@ -209,9 +210,9 @@ struct CodeGenerator {
 		cpp << "\tvoid read(" << cit->second->fullname << " & v, iterator s, iterator e){\n";
 		cpp << "\t\twhile(s != e){\n";
 		cpp << "\t\t\tauto m = read_varint(&s, e);\n";
-		cpp << "\t\t\tauto field_type = static_cast<unsigned>(m & 7);\n";
+		cpp << "\t\t\tauto field_type = static_cast<unsigned>(m & 7U);\n";
 		if(fg.total_count != 0)
-			cpp << "\t\t\tauto field_number = static_cast<unsigned>(m >> 3);\n";
+			cpp << "\t\t\tauto field_number = static_cast<unsigned>(m >> 3U);\n";
 		cpp << "\t\t\t";
 
 		FieldGeneratorRead fgr(*this);

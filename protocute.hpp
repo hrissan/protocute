@@ -20,8 +20,8 @@ inline uint64_t read_varint(iterator * s, iterator e){
 			throw std::runtime_error("varint 64-bit overflow");
 		if (byte == 0 && shift != 0)
 			throw std::runtime_error("varint non-canonical rep");
-		result |= static_cast<uint64_t>(byte & 0x7f) << shift;
-		if ((byte & 0x80) == 0)
+		result |= static_cast<uint64_t>(byte & 0x7fU) << shift;
+		if ((byte & 0x80U) == 0)
 			break;
 	}
 	return result;
@@ -31,23 +31,23 @@ inline T read_varint_t(iterator * s, iterator e){
 	return static_cast<T>(read_varint(s, e));
 }
 inline void write_varint(uint64_t v, std::string & s){
-	while (v >= 0x80) {
-		s.push_back(static_cast<char>((v & 0x7f) | 0x80));
-		v >>= 7;
+	while (v >= 0x80U) {
+		s.push_back(static_cast<char>((v & 0x7fU) | 0x80U));
+		v >>= 7U;
 	}
 	s.push_back(static_cast<char>(v));
 }
 
 inline uint64_t zigzag(int64_t val){
-	return val >= 0 ? uint64_t(val) << 1 : (uint64_t(-(val + 1)) << 1) | 1;
+	return val >= 0 ? uint64_t(val) << 1U : (uint64_t(-(val + 1)) << 1U) | 1U;
 }
 
 inline int64_t zagzig(uint64_t val){
-	return (val & 1) ? -int64_t(val >> 1) - 1 : int64_t(val >> 1);
+	return (val & 1U) ? -int64_t(val >> 1U) - 1 : int64_t(val >> 1U);
 }
 
 inline iterator skip(iterator * s, iterator e, size_t len){
-	size_t remains = static_cast<size_t>(e - *s);
+	auto remains = static_cast<size_t>(e - *s);
 	if(remains < len)
 		throw std::runtime_error("protocute skip underflow");
 	iterator result = *s;
@@ -63,23 +63,23 @@ inline std::string read_string(iterator * s, iterator e){
 }
 
 inline void write_field_varint(unsigned field_number, uint64_t v, std::string & s){
-	write_varint((field_number << 3) | 0, s);
+	write_varint((field_number << 3U) | 0U, s);
 	write_varint(v, s);
 }
 
 inline void write_field_string(unsigned field_number, const std::string & v, std::string & s){
-	write_varint((field_number << 3) | 2, s);
+	write_varint((field_number << 3U) | 2U, s);
 	write_varint(v.size(), s);
 	s += v;
 }
 
 inline void write_field_fixed32(unsigned field_number, const void * v, std::string & s){
-	write_varint((field_number << 3) | 5, s);
+	write_varint((field_number << 3U) | 5U, s);
 	s.append(reinterpret_cast<const char *>(v), 4);
 }
 
 inline void write_field_fixed64(unsigned field_number, const void * v, std::string & s){
-	write_varint((field_number << 3) | 1, s);
+	write_varint((field_number << 3U) | 1U, s);
 	s.append(reinterpret_cast<const char *>(v), 8);
 }
 
@@ -161,7 +161,7 @@ template<typename T>
 void write_packed_fixed(unsigned field_number, const std::vector<T> & v, std::string & s) {
 	if(v.empty())
 		return;
-	write_varint((field_number << 3) | 2, s);
+	write_varint((field_number << 3U) | 2U, s);
 	write_varint(v.size() * sizeof(T), s);
 	s.append(reinterpret_cast<const char *>(v.data()), v.size() * sizeof(T));
 }
