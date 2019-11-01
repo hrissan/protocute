@@ -141,7 +141,7 @@ struct CodeGenerator {
 		close_package();
 		if(!parse_ident_split(s, current_package))
 			throw std::runtime_error("Error parsing package name {" + s + "}");
-		current_package.insert(current_package.begin(), "test");
+//		current_package.insert(current_package.begin(), "test");
 		for(const auto & s : current_package){
 			hpp << "namespace " << s << " { ";
 			auto cn = current_namespace.back();
@@ -592,3 +592,92 @@ int main(int argc, const char * argv[])
 //	protocute::read(node2, str.begin(), str.end());
 	return 0;
 }
+
+/*
+template<class T, class TT>
+void print_vals(const std::string &tip) {
+	for (auto i : {4, -4}) {
+		T obj;
+		obj.set_value(i);
+		auto obj_str = obj.SerializeAsString();
+		std::cout << tip << "(" << i << ") = " << common::to_hex(common::as_binary_array(obj_str)) << std::endl;
+		TT obj2;
+		protobuf::read(obj2, obj_str.begin(), obj_str.end());
+		//		invariant(obj2.value == i, "");
+		auto obj2_str = protobuf::write(obj2);
+		std::cout << tip << "(" << i << ") = " << common::to_hex(common::as_binary_array(obj2_str)) << std::endl;
+		T obj3;
+		obj3.ParseFromString(obj2_str);
+		invariant(obj3.value() == obj.value(), "");
+	}
+}
+
+template<class T, class TT>
+void print_vals2(const std::string &tip) {
+	T obj;
+	TT obj2;
+	obj.add_value(4);
+	obj.add_value(-4);
+	obj2.value.push_back(4);
+	obj2.value.push_back(-4);
+	std::cout << tip << "( 4) = " << common::to_hex(common::as_binary_array(obj.SerializeAsString())) << std::endl;
+	std::cout << tip << "( 4) = " << common::to_hex(common::as_binary_array(protobuf::write(obj2))) << std::endl;
+}
+
+template<class T>
+void test_read(const std::string &tip, const std::string &encoded) {
+	T obj;
+	obj.ParseFromString(encoded);
+	std::cout << tip << "() = " << obj.value() << std::endl;
+}
+
+template<class T>
+void test_read2(const std::string &tip, const std::string &encoded) {
+	T obj;
+	obj.ParseFromString(encoded);
+	for (int i = 0; i != obj.value_size(); ++i)
+		std::cout << tip << "(" << i << ") = " << obj.value(i) << std::endl;
+}
+*/
+
+	/*	print_vals<awful::Tint32, awful::Tint32>(" int32");
+	    print_vals<awful::Tuint32, awful::Tuint32>("uint32");
+	    print_vals<awful::Tsint32, awful::Tsint32>("sint32");
+	    print_vals<awful::Tint64, awful::Tint64>(" int64");
+	    print_vals<awful::Tuint64, awful::Tuint64>("uint64");
+	    print_vals<awful::Tsint64, awful::Tsint64>("sint64");
+	    print_vals<awful::Tfixed32, awful::Tfixed32>("fixed32");
+	    print_vals<awful::Tsfixed32, awful::Tsfixed32>("sfixed32");
+	    print_vals<awful::Tfixed64, awful::Tfixed64>("fixed64");
+	    print_vals<awful::Tsfixed64, awful::Tsfixed64>("sfixed64");
+	    print_vals<awful::Tfloat, awful::Tfloat>("float");
+	    print_vals<awful::Tdouble, awful::Tdouble>("double");
+
+	    print_vals2<awful::RTint32, awful::RTint32>(" int32");
+	    print_vals2<awful::RTuint32, awful::RTuint32>("uint32");
+	    print_vals2<awful::RTsint32, awful::RTsint32>("sint32");
+	    print_vals2<awful::RTint64, awful::RTint64>(" int64");
+	    print_vals2<awful::RTuint64, awful::RTuint64>("uint64");
+	    print_vals2<awful::RTsint64, awful::RTsint64>("sint64");
+	    print_vals2<awful::RTfixed32, awful::RTfixed32>("fixed32");
+	    print_vals2<awful::RTsfixed32, awful::RTsfixed32>("sfixed32");
+	    print_vals2<awful::RTfixed64, awful::RTfixed64>("fixed64");
+	    print_vals2<awful::RTsfixed64, awful::RTsfixed64>("sfixed64");
+	//	print_vals2<awful::RTfloat>("float");
+	//	print_vals2<awful::RTdouble>("double");
+
+	    std::vector<std::string> strs{"0804", "0808", "0807", "08fcffffffffffffffff01", "0d04000000",
+	"090400000000000000"}; for(const auto & str : strs){ std::cout << "---- " << str << std::endl; auto str2 =
+	common::as_string(common::from_hex(str)); test_read<awful::Tint32>(" int32", str2);
+	        test_read<awful::Tuint32>("uint32", str2);
+	        test_read<awful::Tsint32>("sint32", str2);
+	        test_read<awful::Tint64>(" int64", str2);
+	        test_read<awful::Tuint64>("uint64", str2);
+	        test_read<awful::Tsint64>("sint64", str2);
+	        test_read<awful::Tfixed32>("fixed32", str2);
+	        test_read<awful::Tsfixed32>("sfixed32", str2);
+	        test_read<awful::Tfixed64>("fixed64", str2);
+	        test_read<awful::Tsfixed64>("sfixed64", str2);
+	        test_read<awful::Tfloat>("float", str2);
+	        test_read<awful::Tdouble>("double", str2);
+	    }*/
