@@ -4,6 +4,7 @@
 #include <iostream>
 #include <fstream>
 #include <string>
+#include <map>
 #include <complex>
 #include <unistd.h>
 #include <sstream>
@@ -209,9 +210,9 @@ struct CodeGenerator {
 		cpp << "\tvoid read(" << cit->second->fullname << " & v, iterator s, iterator e){\n";
 		cpp << "\t\twhile(s != e){\n";
 		cpp << "\t\t\tauto m = read_varint(&s, e);\n";
-		cpp << "\t\t\tauto field_type = static_cast<unsigned>(m & 7);\n";
+		cpp << "\t\t\tauto field_type = static_cast<unsigned>(m & 7U);\n";
 		if(fg.total_count != 0)
-			cpp << "\t\t\tauto field_number = static_cast<unsigned>(m >> 3);\n";
+			cpp << "\t\t\tauto field_number = static_cast<unsigned>(m >> 3U);\n";
 		cpp << "\t\t\t";
 
 		FieldGeneratorRead fgr(*this);
@@ -308,7 +309,7 @@ struct CodeGenerator {
 		else if(found_cn->fullname == "int32_t")
 			cpp << "0)\n" << ass << "read_varint_t<int32_t>(&s, e)" << ass2 << ";\n\t\t\t";
 		else if(found_cn->fullname == "int64_t")
-			cpp << "0)\n" << ass << "read_varint_t<int64_t>(&s, e)" << ass2 << ";\t\t\t\t";
+			cpp << "0)\n" << ass << "read_varint_t<int64_t>(&s, e)" << ass2 << ";\n\t\t\t";
 		else if(found_cn->fullname == "bool")
 			cpp << "0)\n" << ass << "read_varint(&s, e) != 0" << ass2 << ";\n\t\t\t";
 		else if(found_cn->fullname == "float")
@@ -324,7 +325,7 @@ struct CodeGenerator {
 				cpp << "2){\n\t\t\t\t" << s.name << ".resize(" << s.name << ".size() + 1);\n";
 				cpp << "\t\t\t\tread_message(v." << s.name << ".back(), &s, e);\n\t\t\t}";
 			}else{
-				cpp << "\t\t\t\tread_message(v." << s.name << ", &s, e);\n\t\t\t";
+				cpp << "2){\n\t\t\t\tread_message(v." << s.name << ", &s, e);\n\t\t\t";
 			}
 		}
 		cpp << "else ";

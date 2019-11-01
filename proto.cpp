@@ -209,7 +209,8 @@ bool parse_proto(const std::string & str, GProtoFile & result){
 				);
 	bool ok = phrase_parse(first, str.end(), g_protoFile, ws, result);
 	if (first != str.end()) {
-		std::cout << " --|" << std::string(first, str.end()) << "|--";
+		std::cout << "Excess symbols after --|" << std::string(first, str.end()) << "|--";
+		return false;
 	}
 	return ok;
 }
