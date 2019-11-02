@@ -56,6 +56,25 @@ struct GField {
     std::string name;
     std::string number;
     std::vector<GOption> options;
+    
+    bool is_true_optional()const{
+		for(const auto & op : options)
+			if(op.option_name == "protocute.optional" && op.constant == "true")
+				return true;
+		return false;
+	}
+    bool is_packed()const{
+		for(const auto & op : options)
+			if(op.option_name == "packed" && op.constant == "true")
+				return true;
+		return false;
+	}
+//	std::string get_default()const{
+//		for(const auto & op : options)
+//			if(op.option_name == "default")
+//				return op.constant;
+//		return std::string{};
+//	}
 };
 
 inline std::ostream& operator<<(std::ostream& stream, const GField& val) {

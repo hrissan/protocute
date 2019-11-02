@@ -36,6 +36,20 @@ struct CodeGenerator {
 	std::vector<Namespace *> current_namespace;
 	size_t indent = 0; // signle indent for a::b::c::d
 	
+	struct IncludeGenerator {
+		CodeGenerator & cg;
+		bool opt = false;
+		bool var = false;
+		explicit IncludeGenerator(CodeGenerator & cg):cg(cg){
+		}
+		void operator()(GImport const& s) {}
+		void operator()(std::string const& s) {}
+		void operator()(GField const& s);
+		void operator()(GEnum const& s) {}
+		void operator()(GOption const& s) {}
+		void operator()(GMessage const& s);
+		void operator()(GEmptyStatement const& s) {}
+	};
 	struct EnumGenerator {
 		CodeGenerator & cg;
 		explicit EnumGenerator(CodeGenerator & cg):cg(cg){
@@ -113,11 +127,6 @@ struct CodeGenerator {
 		cit->second->has_sign = has_sign;
 	}
 	explicit CodeGenerator(const std::string & only_name, const std::string & cpp_out_path):only_name(only_name), cpp_out_path(cpp_out_path), hpp(cpp_out_path + "/" + only_name + ".hpp") {
-		hpp << boast;
-		hpp << "#include <string>\n";
-		hpp << "#include <vector>\n";
-		hpp << "#include <cstdint>\n\n";
-		
 		current_namespace = {&root_namespace};
 		add_builtin("double", "double", "0");
 		add_builtin("float", "float", "0");
@@ -132,8 +141,24 @@ struct CodeGenerator {
 		add_builtin("uint64", "uint64_t", "0");
 		add_builtin("fixed64", "uint64_t", "0");
 		add_builtin("bool", "bool", "false");
-		add_builtin("string", "std::string", "std::string{}");
-		add_builtin("bytes", "std::string", "std::string{}");
+		add_builtin("string", "std::string", "");
+		add_builtin("bytes", "std::string", "");
+	}
+	void generate(const GProtoFile & result){
+		hpp << boast;
+		hpp << "#include <string>\n";
+		hpp << "#include <vector>\n";
+		hpp << "#include <cstdint>\n";
+		
+		IncludeGenerator igw(*this);
+		for(const auto & s : result.fields){
+			boost::apply_visitor(igw, s);
+		}
+		hpp << "\n";
+
+		for(const auto & s : result.fields){
+			boost::apply_visitor(*this, s);
+		}
 	}
 	
 	void operator()(GImport const& s) {}
@@ -271,6 +296,9 @@ struct CodeGenerator {
 			throw std::runtime_error("Type specified is a package - " + name);
 		return found_cn;
 	}
+	void generate_include_optional(){
+		hpp << "#include <optional>\n";
+	}
 	void generate_field_read(GField const& s){
 		auto found_cn = resolve_type(s.type);
 		std::string ass = "\t\t\t\tv." + s.name + " = ";
@@ -324,6 +352,9 @@ struct CodeGenerator {
 			if( s.kind == GFieldKind::REPEATED){
 				cpp << "2){\n\t\t\t\t" << s.name << ".resize(" << s.name << ".size() + 1);\n";
 				cpp << "\t\t\t\tread_message(v." << s.name << ".back(), &s, e);\n\t\t\t}";
+			}else if(s.kind == GFieldKind::OPTIONAL && s.is_true_optional()){
+				cpp << "2){\n\t\t\t\t" << s.name << ".emplace();\n";
+				cpp << "\t\t\t\tread_message(*v." << s.name << ", &s, e);\n\t\t\t}";
 			}else{
 				cpp << "2){\n\t\t\t\tread_message(v." << s.name << ", &s, e);\n\t\t\t";
 			}
@@ -332,14 +363,10 @@ struct CodeGenerator {
 	}
 	void generate_field_write(GField const& s){
 		auto found_cn = resolve_type(s.type);
-		bool option_packed = false;
-		for(const auto & op : s.options)
-			if(op.option_name == "packed" && op.constant == "true")
-				option_packed = true;
 		size_t n_tabs = 2;
 		std::string ref = "v." + s.name;
 		if( s.kind == GFieldKind::REPEATED){
-			if(option_packed){
+			if(s.is_packed()){
 				if( found_cn->type == Namespace::ENUM || found_cn->fullname == "bool" || s.type == "uint32" || s.type == "int32" || s.type == "uint64" || s.type == "int64"){
 					cpp << "\t\t\twrite_packed_varint(" << s.number << ", v." << s.name << ", s);\n";
 					return;
@@ -357,10 +384,14 @@ struct CodeGenerator {
 			cpp << "\t\tfor(const auto & vv : v." << s.name <<")\n";
 			ref = "vv";
 			n_tabs += 1;
+		}else if(s.kind == GFieldKind::OPTIONAL && s.is_true_optional()){
+			cpp << "\t\tif(v." << s.name <<")\n";
+			ref = "*v." + s.name;
+			n_tabs += 1;
 		}else if( s.kind != GFieldKind::REQUIRED && !found_cn->enum_default_value.empty() ){
 			if(found_cn->enum_default_value == "false"){
 				cpp << std::string(n_tabs, '\t') << "if("<< ref << ")\n";
-			}else if(found_cn->enum_default_value == "std::string{}"){
+			}else if(found_cn->fullname == "std::string"){
 				cpp << std::string(n_tabs, '\t') << "if(!" << ref << ".empty())\n";
 			}else if(found_cn->type == Namespace::ENUM){
 				cpp << std::string(n_tabs, '\t') << "if(" << ref << " != " << found_cn->fullname << "::" << found_cn->enum_default_value << ")\n";
@@ -398,8 +429,11 @@ struct CodeGenerator {
 	}
 	void generate_field(GField const& s){
 		hpp << std::string(indent, '\t');
+		
 		if(s.kind == GFieldKind::REPEATED){
 			hpp << "std::vector<";
+		}else if(s.kind == GFieldKind::OPTIONAL && s.is_true_optional()){
+			hpp << "std::optional<";
 		}
 		auto found_cn = resolve_type(s.type);
 		if(found_cn->type == Namespace::BUILTIN)
@@ -408,10 +442,15 @@ struct CodeGenerator {
 			hpp << s.type; // We hope C++ resolves in the same as we do
 		if(s.kind == GFieldKind::REPEATED){
 			hpp << ">";
+		}else if(s.kind == GFieldKind::OPTIONAL && s.is_true_optional()){
+			hpp << ">";
 		}
 		hpp << " " << s.name;
-		if(s.kind != GFieldKind::REPEATED && !found_cn->enum_default_value.empty() && found_cn->enum_default_value != "std::string{}")
+		if(s.kind == GFieldKind::REPEATED){
+		}else if(s.kind == GFieldKind::OPTIONAL && s.is_true_optional()){
+		}else if(s.kind != GFieldKind::REPEATED && !found_cn->enum_default_value.empty()) {// && found_cn->fullname != "std::string"
 			hpp << " = " << found_cn->enum_default_value;
+		}
 		hpp << ";\n";
 	}
 	void gen_defs(const Namespace & na){
@@ -448,6 +487,18 @@ struct CodeGenerator {
 		}
 	}
 };
+
+void CodeGenerator::IncludeGenerator::operator()(GMessage const& s) {
+	for(const auto & f : s.fields)
+		boost::apply_visitor(*this, f);
+}
+
+void CodeGenerator::IncludeGenerator::operator()(GField const& s) {
+	if (s.is_true_optional() && !opt){
+		opt = true;
+		cg.generate_include_optional();
+	}
+}
 
 void CodeGenerator::EnumGenerator::operator()(GEnum const& s){
 	cg.operator()(s);
@@ -487,10 +538,8 @@ int generate(std::string pf, std::vector<std::string> import_paths, std::string 
 
 	CodeGenerator generator(only_name, cpp_out_path); // , import_paths
 	
-	for(const auto & s : result.fields){
-		boost::apply_visitor(generator, s);
-	}
-	
+	generator.generate(result);
+		
 	generator.finish_header();
 /*	test_rules();
 
