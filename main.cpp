@@ -45,6 +45,7 @@ struct CodeGenerator {
 		void operator()(GImport const& s) {}
 		void operator()(std::string const& s) {}
 		void operator()(GField const& s);
+		void operator()(GOneOf const& s);
 		void operator()(GEnum const& s) {}
 		void operator()(GOption const& s) {}
 		void operator()(GMessage const& s);
@@ -55,6 +56,7 @@ struct CodeGenerator {
 		explicit EnumGenerator(CodeGenerator & cg):cg(cg){
 		}
 		void operator()(GField const& s) {}
+		void operator()(GOneOf const& s) {}
 		void operator()(GEnum const& s);
 		void operator()(GOption const& s) {}
 		void operator()(GMessage const& s) {}
@@ -65,6 +67,7 @@ struct CodeGenerator {
 		explicit MessageGenerator(CodeGenerator & cg):cg(cg){
 		}
 		void operator()(GField const& s) {}
+		void operator()(GOneOf const& s) {}
 		void operator()(GEnum const& s) {}
 		void operator()(GOption const& s) {}
 		void operator()(GMessage const& s);
@@ -76,6 +79,7 @@ struct CodeGenerator {
 		explicit FieldGenerator(CodeGenerator & cg):cg(cg){
 		}
 		void operator()(GField const& s);
+		void operator()(GOneOf const& s);
 		void operator()(GEnum const& s) {}
 		void operator()(GOption const& s) {}
 		void operator()(GMessage const& s) {}
@@ -86,6 +90,7 @@ struct CodeGenerator {
 		explicit FieldGeneratorRead(CodeGenerator & cg):cg(cg){
 		}
 		void operator()(GField const& s);
+		void operator()(GOneOf const& s);
 		void operator()(GEnum const& s) {}
 		void operator()(GOption const& s) {}
 		void operator()(GMessage const& s) {}
@@ -96,6 +101,7 @@ struct CodeGenerator {
 		explicit FieldGeneratorWrite(CodeGenerator & cg):cg(cg){
 		}
 		void operator()(GField const& s);
+		void operator()(GOneOf const& s);
 		void operator()(GEnum const& s) {}
 		void operator()(GOption const& s) {}
 		void operator()(GMessage const& s) {}
@@ -193,7 +199,7 @@ struct CodeGenerator {
 		cit = cn->member.emplace(s.name, std::make_unique<Namespace>()).first;
 		cit->second->fullname = cn->fullname + "::" + s.name;
 		cit->second->type = Namespace::ENUM;
-		hpp << std::string(indent, '\t') << "enum " << s.name << " {";
+		hpp << std::string(indent, '\t') << "enum class " << s.name << " {";
 		bool first_field = true;
 		for(const auto & f : s.fields)
 			if(f.type() == typeid(GEnumField)){
@@ -260,6 +266,7 @@ struct CodeGenerator {
 		indent -= 1;
 		hpp << std::string(indent, '\t') << "};\n\n";
 	}
+	void operator()(GOneOf const& s) {}
 	void operator()(GEmptyStatement const& s) {}
 	Namespace * resolve_type(const std::string & name){
 		std::string str = name;
@@ -296,14 +303,27 @@ struct CodeGenerator {
 			throw std::runtime_error("Type specified is a package - " + name);
 		return found_cn;
 	}
-	void generate_include_optional(){
-		hpp << "#include <optional>\n";
+	void generate_oneof_read(GOneOf const& s){
+		GField tmp;
+		tmp.name = s.name;
+		tmp.kind = GFieldKind::ONEOF;
+		for(size_t i = 0; i != s.fields.size(); ++i) {
+			tmp.type = s.fields[i].type;
+			tmp.number = s.fields[i].number;
+			generate_field_read(tmp, i + 1);
+		}
 	}
 	void generate_field_read(GField const& s){
+		generate_field_read(s, 0);
+	}
+	void generate_field_read(GField const& s, size_t variant_index){
 		auto found_cn = resolve_type(s.type);
 		std::string ass = "\t\t\t\tv." + s.name + " = ";
 		std::string ass2 = "";
-		if( s.kind == GFieldKind::REPEATED){
+		if( s.kind == GFieldKind::ONEOF){
+			ass = "\t\t\t\tv." + s.name + ".emplace<" + std::to_string(variant_index) + ">() = ";
+			ass2 = "";
+		} else if( s.kind == GFieldKind::REPEATED){
 			ass = "\t\t\t\tv." + s.name + ".push_back(";
 			ass2 = ")";
 			if( found_cn->type == Namespace::ENUM || found_cn->fullname == "bool" || s.type == "uint32" || s.type == "int32" || s.type == "uint64" || s.type == "int64"){
@@ -349,23 +369,50 @@ struct CodeGenerator {
 		else if(found_cn->fullname == "std::string")
 			cpp << "2)\n" << ass << "read_string(&s, e)" << ass2 << ";\n\t\t\t";
 		else {
-			if( s.kind == GFieldKind::REPEATED){
-				cpp << "2){\n\t\t\t\t" << s.name << ".resize(" << s.name << ".size() + 1);\n";
+			if( s.kind == GFieldKind::ONEOF){
+				cpp << "2)\n";
+				cpp << "\t\t\t\tread_message(v." << s.name << ".emplace<" << variant_index << ">(), &s, e);\n\t\t\t";
+			}else if( s.kind == GFieldKind::REPEATED){
+				cpp << "2){\n\t\t\t\tv." << s.name << ".emplace_back();\n";
 				cpp << "\t\t\t\tread_message(v." << s.name << ".back(), &s, e);\n\t\t\t}";
 			}else if(s.kind == GFieldKind::OPTIONAL && s.is_true_optional()){
-				cpp << "2){\n\t\t\t\t" << s.name << ".emplace();\n";
-				cpp << "\t\t\t\tread_message(*v." << s.name << ", &s, e);\n\t\t\t}";
+				cpp << "2)\n";
+				cpp << "\t\t\t\tread_message(v." << s.name << ".emplace(), &s, e);\n\t\t\t";
 			}else{
-				cpp << "2){\n\t\t\t\tread_message(v." << s.name << ", &s, e);\n\t\t\t";
+				cpp << "2)\n\t\t\t\tread_message(v." << s.name << ", &s, e);\n\t\t\t";
 			}
 		}
 		cpp << "else ";
 	}
+	void generate_oneof_write(GOneOf const& s){
+		GField tmp;
+		tmp.name = s.name;
+		tmp.kind = GFieldKind::ONEOF;
+		cpp << "\t\tswitch(v." << s.name << ".index()){\n";
+		for(size_t i = 0; i != s.fields.size(); ++i) {
+			tmp.type = s.fields[i].type;
+			tmp.number = s.fields[i].number;
+			generate_field_write(tmp, i + 1);
+		}
+		cpp << "\t\tdefault:\n";
+		cpp << "\t\t\tbreak;\n";
+		cpp << "\t\t}\n";
+	}
 	void generate_field_write(GField const& s){
+		generate_field_write(s, 0);
+	}
+	void generate_field_write(GField const& s, size_t variant_index){
 		auto found_cn = resolve_type(s.type);
 		size_t n_tabs = 2;
 		std::string ref = "v." + s.name;
-		if( s.kind == GFieldKind::REPEATED){
+		if( s.kind == GFieldKind::ONEOF){
+//			cpp << "\t\tif(auto pval = std::get_if<" << variant_index << ">(&v." << s.name <<"))\n";
+//			ref = "*pval";
+//			n_tabs += 1;
+			cpp << "\t\tcase " << variant_index << ":\n";
+			ref = "std::get<" + std::to_string(variant_index) + ">(v." + s.name + ")";
+			n_tabs += 1;
+		} else if( s.kind == GFieldKind::REPEATED){
 			if(s.is_packed()){
 				if( found_cn->type == Namespace::ENUM || found_cn->fullname == "bool" || s.type == "uint32" || s.type == "int32" || s.type == "uint64" || s.type == "int64"){
 					cpp << "\t\t\twrite_packed_varint(" << s.number << ", v." << s.name << ", s);\n";
@@ -389,7 +436,7 @@ struct CodeGenerator {
 			ref = "*v." + s.name;
 			n_tabs += 1;
 		}else if( s.kind != GFieldKind::REQUIRED && !found_cn->enum_default_value.empty() ){
-			if(found_cn->enum_default_value == "false"){
+			if(found_cn->fullname == "bool"){
 				cpp << std::string(n_tabs, '\t') << "if("<< ref << ")\n";
 			}else if(found_cn->fullname == "std::string"){
 				cpp << std::string(n_tabs, '\t') << "if(!" << ref << ".empty())\n";
@@ -426,6 +473,9 @@ struct CodeGenerator {
 			cpp << std::string(n_tabs, '\t') << "write_field_string(" << s.number << ", " << ref << ", s);\n";
 		else
 			cpp << std::string(n_tabs, '\t') << "write_field_string(" << s.number << ", write(" << ref << "), s);\n";
+		if( s.kind == GFieldKind::ONEOF){
+			cpp << "\t\t\tbreak;\n";
+		}
 	}
 	void generate_field(GField const& s){
 		hpp << std::string(indent, '\t');
@@ -449,9 +499,32 @@ struct CodeGenerator {
 		if(s.kind == GFieldKind::REPEATED){
 		}else if(s.kind == GFieldKind::OPTIONAL && s.is_true_optional()){
 		}else if(s.kind != GFieldKind::REPEATED && !found_cn->enum_default_value.empty()) {// && found_cn->fullname != "std::string"
-			hpp << " = " << found_cn->enum_default_value;
+			if(found_cn->type == Namespace::ENUM)
+				hpp << " = " << found_cn->fullname << "::" << found_cn->enum_default_value;
+			else
+				hpp << " = " << found_cn->enum_default_value;
 		}
 		hpp << ";\n";
+	}
+	void generate_oneof(GOneOf const& s){
+		hpp << std::string(indent, '\t') << "std::variant<std::monostate";
+		for(const auto & f : s.fields) {
+			hpp << ",\n" << std::string(indent + 1, '\t');
+//			hpp << ", ";
+			auto found_cn = resolve_type(f.type);
+			if(found_cn->type == Namespace::BUILTIN)
+				hpp << found_cn->fullname;
+			else
+				hpp << f.type; // We hope C++ resolves in the same as we do
+		}
+		hpp << "\n" << std::string(indent, '\t') << "> " << s.name << ";\n";
+		hpp << std::string(indent, '\t') << "enum " << s.name << "_num {";
+		for(size_t i = 0; i != s.fields.size(); ++i) {
+			if (i != 0)
+				hpp << ",";
+			hpp << "\n" << std::string(indent + 1, '\t') << "i_" << s.fields.at(i).name << " = " << i + 1;
+		}
+		hpp << "\n" << std::string(indent, '\t') << "};\n";
 	}
 	void gen_defs(const Namespace & na){
 		if(na.type == Namespace::MESSAGE){
@@ -492,11 +565,16 @@ void CodeGenerator::IncludeGenerator::operator()(GMessage const& s) {
 	for(const auto & f : s.fields)
 		boost::apply_visitor(*this, f);
 }
-
+void CodeGenerator::IncludeGenerator::operator()(GOneOf const& s) {
+	if (!var){
+		var = true;
+		cg.hpp << "#include <variant>\n";
+	}
+}
 void CodeGenerator::IncludeGenerator::operator()(GField const& s) {
 	if (s.is_true_optional() && !opt){
 		opt = true;
-		cg.generate_include_optional();
+		cg.hpp << "#include <optional>\n";
 	}
 }
 
@@ -512,12 +590,21 @@ void CodeGenerator::FieldGenerator::operator()(GField const& s){
 	total_count += 1;
 	cg.generate_field(s);
 }
-
+void CodeGenerator::FieldGenerator::operator()(GOneOf const& s){
+	total_count += 1;
+	cg.generate_oneof(s);
+}
 void CodeGenerator::FieldGeneratorRead::operator()(GField const& s){
 	cg.generate_field_read(s);
 }
+void CodeGenerator::FieldGeneratorRead::operator()(GOneOf const& s){
+	cg.generate_oneof_read(s);
+}
 void CodeGenerator::FieldGeneratorWrite::operator()(GField const& s){
 	cg.generate_field_write(s);
+}
+void CodeGenerator::FieldGeneratorWrite::operator()(GOneOf const& s){
+	cg.generate_oneof_write(s);
 }
 
 int generate(std::string pf, std::vector<std::string> import_paths, std::string cpp_out_path)
@@ -582,6 +669,7 @@ static std::string normalize_path(std::string str){
 
 int main(int argc, const char * argv[])
 {
+//	test_rules();
 	std::vector<std::string> import_paths;
 	std::vector<std::string> protofiles;
 	std::string cpp_out_path;

@@ -48,7 +48,8 @@ BOOST_FUSION_ADAPT_STRUCT(GOption,
 	(std::string, constant)
 )
 
-enum class GFieldKind { OPTIONAL, REQUIRED, REPEATED };
+enum class GFieldKind { OPTIONAL, REQUIRED, REPEATED, ONEOF };
+// ONEOF is not parsed from file, but assigned in code as a shortcut
 
 struct GField {
 	GFieldKind kind = GFieldKind::OPTIONAL;
@@ -98,7 +99,7 @@ struct GEnumField {
 struct GEmptyStatement {};
 
 struct GEnum {
-	typedef boost::variant<GEnumField, GOption, GEmptyStatement> GEnumFieldVariant;
+	typedef boost::variant<GEnumField, GOption> GEnumFieldVariant;
 	std::string name;
 	std::vector<GEnumFieldVariant> fields;
 };
@@ -127,9 +128,42 @@ BOOST_FUSION_ADAPT_STRUCT(GEnum,
 	(std::vector<GEnum::GEnumFieldVariant>, fields)
 )
 
+struct GOneOfField {
+	std::string type;
+	std::string name;
+	std::string number;
+	std::vector<GOption> options;
+};
+
+
+inline std::ostream& operator<<(std::ostream& stream, const GOneOfField& val) {
+	return stream << "GOneOfField{" << val.type << "|" << val.name << "|" << val.number << "|" << val.options.size() << "}";
+}
+
+BOOST_FUSION_ADAPT_STRUCT(GOneOfField,
+	(std::string, type)
+	(std::string, name)
+	(std::string, number)
+	(std::vector<GOption>, options)
+)
+
+struct GOneOf {
+	std::string name;
+	std::vector<GOneOfField> fields;
+};
+
+inline std::ostream& operator<<(std::ostream& stream, const GOneOf& val) {
+	return stream << "GOneOf{" << val.name << "|" << val.fields.size() << "}";
+}
+
+BOOST_FUSION_ADAPT_STRUCT(GOneOf,
+	(std::string, name)
+	(std::vector<GOneOfField>, fields)
+)
+
 struct GMessage;
 
-typedef boost::variant<boost::recursive_wrapper<GMessage>, GField, GEnum, GOption, GEmptyStatement> GMessageFieldVariant;
+typedef boost::variant<boost::recursive_wrapper<GMessage>, GField, GEnum, GOption, GOneOf, GEmptyStatement> GMessageFieldVariant;
 
 struct GMessage {
 	std::string name;
@@ -148,6 +182,10 @@ struct PrintVisitor {
 		stream << s;
 	}
 	void operator()(GOption const& s) const
+	{
+		stream << s;
+	}
+	void operator()(GOneOf const& s) const
 	{
 		stream << s;
 	}

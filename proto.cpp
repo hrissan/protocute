@@ -159,8 +159,12 @@ qi::rule<Iterator, std::vector<GOption>(), skip_grammar> g_fieldOptions = g_fiel
 qi::rule<Iterator, int(), skip_grammar> g_fieldLabel = (qi::lit("required") >> qi::attr(GFieldKind::REQUIRED)) | (qi::lit("optional") >> qi::attr(GFieldKind::OPTIONAL)) | (qi::lit("repeated") >> qi::attr(GFieldKind::REPEATED));
 qi::rule<Iterator, GField(), skip_grammar> g_field = g_fieldLabel > g_fullIdent > g_ident > qi::lit('=') > g_intLit > ((qi::lit("[") > g_fieldOptions > qi::lit("]")) | qi::attr(std::vector<GOption>{})) > qi::lit(';');
 
+qi::rule<Iterator, GOneOfField(), skip_grammar> g_oneofField = g_fullIdent > g_ident > qi::lit('=') > g_intLit > ((qi::lit("[") > g_fieldOptions > qi::lit("]")) | qi::attr(std::vector<GOption>{})) > qi::lit(';');
+
+qi::rule<Iterator, GOneOf(), skip_grammar> g_oneof = qi::lit("oneof") > g_ident > qi::lit('{') > *qi::lit(";") >> *(g_oneofField >> *qi::lit(";")) > qi::lit('}');
+
 qi::rule<Iterator, GEnumField(), skip_grammar> g_enumField = g_ident > qi::lit('=') > g_intLit > ((qi::lit("[") > g_fieldOptions > qi::lit("]")) | qi::attr(std::vector<GOption>{})) > qi::lit(';');
-qi::rule<Iterator, GEnum(), skip_grammar> g_enum = qi::lit("enum") > g_ident > qi::lit('{') > *(g_option | g_enumField | (qi::lit(";") >> qi::attr(GEmptyStatement{}))) > qi::lit('}');
+qi::rule<Iterator, GEnum(), skip_grammar> g_enum = qi::lit("enum") > g_ident > qi::lit('{') > *qi::lit(";") >> *((g_option | g_enumField) >> *qi::lit(";")) > qi::lit('}');
 
 qi::rule<Iterator, GMessage(), skip_grammar> g_message;
 
@@ -170,7 +174,6 @@ qi::rule<Iterator, GEmptyStatement(), skip_grammar> g_extend = qi::omit[ qi::lit
 
 // Those ideas below were all bad ideas, we'll just skip them.
 // TODO - group
-// TODO - oneof
 // TODO - map
 // TODO - extensions
 // TODO - ranges
@@ -179,13 +182,15 @@ qi::rule<Iterator, GEmptyStatement(), skip_grammar> g_extend = qi::omit[ qi::lit
 // TODO - extend
 // TODO - service
 
+// We compile oneof into std::variant, ignoring field names
+
 static bool prepared = false;
 
 void prepare_rules(){
 	if(prepared)
 		return;
 	prepared = true;
-	g_message = qi::lit("message") > g_ident > qi::lit('{') > *(g_field | g_enum | g_message | g_extend | g_option | (qi::lit(";") >> qi::attr(GEmptyStatement{}))) > qi::lit('}');
+	g_message = qi::lit("message") > g_ident > qi::lit('{') > *qi::lit(";") >> *((g_field | g_enum | g_message | g_extend | g_option | g_oneof) >> *qi::lit(";")) > qi::lit('}');
 
 	g_protoFile = g_syntax > *(g_import | g_package | g_option | g_enum | g_message | g_extend | (qi::lit(";") >> qi::attr(GEmptyStatement{})));
 }
@@ -291,4 +296,10 @@ void test_rules(){
     test_phrase_parse("enum EnumAllowingAlias {UNKNOWN = 0; option allow_alias = true; ; STARTED = 1;};", g_enum, "enum EnumAllowingAlias {UNKNOWN = 0; option allow_alias = true; ; STARTED = 1;}");
 
     test_phrase_parse("message Outer { required int64 ival = 1; enum EnumAllowingAlias {A = 0; B = 1;} };", g_message, "message Outer { required int64 ival = 1; enum EnumAllowingAlias {A = 0; B = 1;} }");
+
+    test_phrase_parse("int64 ival = 1;", g_oneofField, "int64 ival = 1;");
+    test_phrase_parse("string sval = 2;", g_oneofField, "string sval = 2;");
+    test_phrase_parse("oneof zlo { int64 ival = 1; ; string sval = 2; }", g_oneof, "oneof zlo { int64 ival = 1; ; string sval = 2; }");
+
+    test_phrase_parse("message Outer { oneof zlo { int64 ival = 1; string sval = 2; } };", g_message, "message Outer { oneof zlo { int64 ival = 1; string sval = 2; } }");
 }
