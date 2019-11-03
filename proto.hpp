@@ -7,12 +7,6 @@
 #include <string>
 #include <vector>
 
-//typedef std::pair<int, std::string> LiteralType;
-
-//inline std::ostream& operator<<(std::ostream& stream, const LiteralType& val) {
-//    return stream << "LiteralType{" << val.first << "}";
-// }
-
 struct GImport {
 	boost::optional<int> kind;
     std::string filename;
@@ -50,6 +44,7 @@ BOOST_FUSION_ADAPT_STRUCT(GOption,
 
 enum class GFieldKind { OPTIONAL, REQUIRED, REPEATED, ONEOF };
 // ONEOF is not parsed from file, but assigned in code as a shortcut
+// when generating field inside oneof group
 
 struct GField {
 	GFieldKind kind = GFieldKind::OPTIONAL;

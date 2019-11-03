@@ -27,6 +27,7 @@ using ascii::char_;
 
 namespace spirit = boost::spirit;
 
+/*
     template <typename Expr, typename Iterator = spirit::unused_type>
     struct attribute_of_parser
     {
@@ -63,6 +64,7 @@ namespace spirit = boost::spirit;
 //        os << typeid(type).name() << std::endl;
         os << "{ " << boost::core::demangle(typeid(type).name()) << " }" << std::endl;
     }
+*/
 
 typedef std::string::const_iterator Iterator;
 
@@ -123,6 +125,8 @@ void test_phrase_parse(const std::string & str, R & r, std::string must_be){
 		std::cout << "====BAD, actual {" << std::string(str.begin(), first) << "}" << std::endl;
 }
 
+namespace {
+
 qi::rule<Iterator, std::string()> g_decimalLit = char_("1-9") >> *qi::digit;
 qi::rule<Iterator, std::string()> g_octalLit = char_("0") >> *char_("0-7");
 qi::rule<Iterator, std::string()> g_hexLit = qi::hold[char_("0") >> (char_("x") | char_("X")) >> +qi::xdigit];
@@ -172,36 +176,34 @@ qi::rule<Iterator, GProtoFile(), skip_grammar> g_protoFile;
 
 qi::rule<Iterator, GEmptyStatement(), skip_grammar> g_extend = qi::omit[ qi::lit("extend") > g_messageEnumType > qi::lit('{') > *(g_field | (qi::lit(";") >> qi::attr(GEmptyStatement{}))) > qi::lit('}')] >> qi::attr(GEmptyStatement{});
 
-// Those ideas below were all bad ideas, we'll just skip them.
-// TODO - group
-// TODO - map
-// TODO - extensions
-// TODO - ranges
-// TODO - range
-// TODO - reserved
-// TODO - extend
-// TODO - service
+qi::rule<Iterator, std::vector<std::string>()> g_fullIdentSplit = qi::as_string[g_ident] >> *qi::hold[qi::as_string[(qi::lit(".") >> g_ident)]];
 
-// We compile oneof into std::variant, ignoring field names
+// We do not support features below, probably they are rarely used
+// and some of them controversial, we'll just skip them for now
+// * group
+// * map
+// * extensions
+// * ranges
+// * range
+// * reserved
+// * extend
+// * service
 
-static bool prepared = false;
+struct PrepareRules {
+	PrepareRules(){
+		// Those rules are recursive, hence need to assign here
+		g_message = qi::lit("message") > g_ident > qi::lit('{') > *qi::lit(";") >> *((g_field | g_enum | g_message | g_extend | g_option | g_oneof) >> *qi::lit(";")) > qi::lit('}');
+		g_protoFile = g_syntax > *(g_import | g_package | g_option | g_enum | g_message | g_extend | (qi::lit(";") >> qi::attr(GEmptyStatement{})));
 
-void prepare_rules(){
-	if(prepared)
-		return;
-	prepared = true;
-	g_message = qi::lit("message") > g_ident > qi::lit('{') > *qi::lit(";") >> *((g_field | g_enum | g_message | g_extend | g_option | g_oneof) >> *qi::lit(";")) > qi::lit('}');
+		g_ident.name("Identifier");
+		g_fullIdent.name("Fully quialified identifier");
+	}
+} prepare_rules_init;
 
-	g_protoFile = g_syntax > *(g_import | g_package | g_option | g_enum | g_message | g_extend | (qi::lit(";") >> qi::attr(GEmptyStatement{})));
 }
 
+
 bool parse_proto(const std::string & str, GProtoFile & result){
-	
-	prepare_rules();
-
-	g_ident.name("Identifier");
-	g_fullIdent.name("Fully quialified identifier");
-
 	Iterator first = str.begin();
     skip_grammar ws;
 	qi::on_error<qi::fail>(g_protoFile,
@@ -220,8 +222,6 @@ bool parse_proto(const std::string & str, GProtoFile & result){
 	return ok;
 }
 
-qi::rule<Iterator, std::vector<std::string>()> g_fullIdentSplit = qi::as_string[g_ident] >> *qi::hold[qi::as_string[(qi::lit(".") >> g_ident)]];
-
 bool parse_ident_split(const std::string & str, std::vector<std::string> & result){
 	Iterator first = str.begin();
     bool ok = parse(first, str.end(), g_fullIdentSplit, result);
@@ -233,7 +233,6 @@ bool parse_ident_split(const std::string & str, std::vector<std::string> & resul
 }
 
 void test_rules(){
-	prepare_rules();
 	test_parse("123", g_intLit, "123");
 	test_parse("12A", g_intLit, "12");
 	test_parse("0", g_intLit, "0");

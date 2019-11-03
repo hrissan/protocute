@@ -5,7 +5,7 @@
 
 namespace protocute {
 	
-typedef std::string::const_iterator iterator;
+typedef const char * iterator;
 
 inline uint64_t read_varint(iterator * s, iterator e){
 	size_t read = 0;
@@ -26,10 +26,12 @@ inline uint64_t read_varint(iterator * s, iterator e){
 	}
 	return result;
 }
+
 template<class T>
 inline T read_varint_t(iterator * s, iterator e){
 	return static_cast<T>(read_varint(s, e));
 }
+
 inline void write_varint(uint64_t v, std::string & s){
 	while (v >= 0x80U) {
 		s.push_back(static_cast<char>((v & 0x7fU) | 0x80U));
@@ -111,7 +113,7 @@ inline void skip_by_type(unsigned field_type, iterator * s, iterator e){
 			skip(s, e, 4);
 			break;
 		default:
-			break;
+			throw std::runtime_error("cannot skip unknown wire type " + std::to_string(field_type));
 	}
 }
 
@@ -139,6 +141,7 @@ void read_packed_s_varint(std::vector<T> & v, iterator * s, iterator e) {
 		v.push_back(static_cast<T>(zagzig(read_varint(&p, *s))));
 	}
 }
+
 template<typename T>
 void write_packed_varint(unsigned field_number, const std::vector<T> & v, std::string & s) {
 	if(v.empty())
@@ -148,6 +151,7 @@ void write_packed_varint(unsigned field_number, const std::vector<T> & v, std::s
 		write_varint(static_cast<uint64_t>(vv), pack);
 	write_field_string(field_number, pack, s);
 }
+
 template<typename T>
 void write_packed_s_varint(unsigned field_number, const std::vector<T> & v, std::string & s) {
 	if(v.empty())
@@ -157,6 +161,7 @@ void write_packed_s_varint(unsigned field_number, const std::vector<T> & v, std:
 		write_varint(zigzag(vv), pack);
 	write_field_string(field_number, pack, s);
 }
+
 template<typename T>
 void write_packed_fixed(unsigned field_number, const std::vector<T> & v, std::string & s) {
 	if(v.empty())
@@ -173,8 +178,8 @@ void read_packed_fixed(std::vector<T> & v, iterator * s, iterator e) {
 	if(len % sizeof(T) != 0)
 		throw std::runtime_error("packed fixed field has uneven size");
 	auto count = len / sizeof(T);
-	v.resize(v.size() + count);
+	v.resize(v.size() + count); // safe because skip above
 	memcpy(v.data() + v.size() - count, &*p, len);
 }
 
-}
+} // namespace protocute

@@ -22,6 +22,106 @@ It is being implemented step by step as more complicated `.proto` definitions ar
 
 If you like `protocute` but it lacks some `protobuf` feature you need - just add an issue and I will try to look into it.
 
+## How `protocute` compiles various features of `.proto` files
+
+### package becomes namespace
+```
+package test123;
+```
+C++
+```
+namespace test123 { 
+```
+
+### `enum` becomes `enum class`
+```
+enum Side {
+    LEFT  = 0;
+    RIGHT = 1;
+    UNKNOWN_SIDE = 99;
+}
+```
+C++
+```
+enum class Side {
+	LEFT = 0,
+	RIGHT = 1,
+	UNKNOWN_SIDE = 99
+};
+```
+
+### message becomes struct, repeated becomes `std::vector`
+```
+message Ints {
+    optional int32 value1 = 1;
+    repeated uint64 value2 = 2 [packed = true];
+    optional Side side = 3;
+}
+```
+C++
+```
+struct Ints { 
+	int32_t value1 = 0;
+	std::vector<uint64_t> value2;
+	Side side = ::test123::Side::LEFT;
+};
+```
+
+### optional is omitted, `protocute.optional` can be added to get `std::optional`
+```
+message Point {
+    optional int64 x = 1;
+    optional int64 y = 2;
+    optional int64 z = 3 [ protocute.optional = true ];
+}
+```
+C++
+```
+struct Point { 
+	int64_t x = 0;
+	int64_t y = 0;
+	std::optional<int64_t> z;
+};
+```
+
+### `oneof` becomes `std::variant` plus `enum` mapped to variant index, identical types are supported
+```
+message Something {
+    oneof position {
+        string name = 5;
+        string name_alt = 6;
+        Point pos = 7;
+    }
+}
+```
+C++
+```
+struct Something { 
+	std::variant<std::monostate,
+		std::string,
+		std::string,
+		Point
+	> position;
+	enum position_num {
+		i_name = 1,
+		i_name_alt = 2,
+		i_pos = 3
+	};
+};
+```
+You see that enum contains field index in std::variant, not field number used as an identifier on wire.
+
+So in your code you can access particular field as `std::get<Something::i_pos>(something.position)` and set as `something.emplace<Something::i_name>("Example")`.
+
+### Every `enum` and `message` will get the following pair of functions in `protocute` namespace
+```
+void read(::test123::Point & v, iterator s, iterator e);
+std::string write(const ::test123::Point & v);
+```
+
+Where `iterator` is defined as `typedef const char * iterator;` so that any memory buffer can be decoded
+without resorting to template code (for `std::string str`, just use `read(v, str.data(), str.data() + str.size());`.
+
 ## Protobuf design deficiencies
 
 ### Optional is broken
@@ -74,20 +174,25 @@ But if we mark fields `optional` in `Protobuf`, compiler will make them optional
 Something like that (google uses its own wrapper instead of `boost::optional` but this does not matter for this discussion)
 ```
 struct PointGoogle {
-	boost::optional<int> x;
-	boost::optional<int> y;
-	boost::optional<int> z;
-	boost::optional<int> t;
+	std::optional<int> x;
+	std::optional<int> y;
+	std::optional<int> z;
+	std::optional<int> t;
 }
 ```
 
-This is not we want. And if we mark those fields as `required` we cannot read points of old version from the new code, because they contain no `t`.
+This is not what we want. And if we mark those fields as `required` we cannot read points of old version from the new code, because they contain no `t`.
 
 So actual good design would be that all fields are optional on the wire, and the word `optional` would be used rarely to generate optional fields in structs.
 
 `protocute` would just generates simple fields with no regard to `optional` keyword.
 
 `protocute` would generate `if(v != default_v)` for saving `optional` fields, and would save `required` fields independent of their value.
+
+If actual `optional` field is required, just add `[ protocute.optional = true ];` to the required field.
+
+For now, `protocute` does not read `default` option from `.proto` definitions, and default value is selected based on field type.
+This is actually what Google recommends for all new `.proto` definitions.
 
 ### Signed is broken
 
@@ -136,6 +241,7 @@ uint64 |  04     | impossible
 sint64 |  08     | 07
 
 Ok, looks like we have actually 2 different representations of `4`, and 2 different representation of `-4`.
+Moreover we have not way to know if signed or unsigned value was saved.
 
 This means, that if we had `uintXX`, we cannot change it into `sintXX`, because all saved values will be doubled when read from wire. Reverse is also true.
 
@@ -159,24 +265,23 @@ As the field type is lost when `packed = true` is used, the content of the packe
 
 also `fixed32` will never be attempted to be read as `fixed64` and vice versa.
 
-Of cause, repeated `fixed32` field with size 2 will be happily read into repeated `fixed64` field of size on...
+Of cause, repeated `fixed32` field with size `2 * x` will be happily read into repeated `fixed64` field of size `x`...
 
 ## Improving design
 
-Largest 64-bit value in varint encoding actually stores 70 bit of data, more than enough to store explicit sign.
+Largest 64-bit value in varint encoding actually stores 70 bit of data, more than enough to store actual value, with explicit sign.
 
-It seems, that using 65-bit zigzag coding for all types (even unsigned) would be the best idea, because it would allow changing field type between all `varint` in a way that if the saved values would fit into new type in the first place, they would be read correctly.
+So actual values from `-2^63` to `2^64-1` will be stored. When reading, check will be performed if the actual value can be assigned to destination type.
+Negative values obviously cannot be assigned to unsigned ints, and very large unsigned values cannot be assigned to signed ints.
 
-Moreover, if for example `uint64` type was changed to `int64`, we will correctly detect error during reading all values that cannot be represented in `int64`, for example `2^64-1` would not silently convert into `-1`.
+In case the silent conversion is desired for some field instead of error, the field could be marked with an option `autoconvert = true` or similar.
 
-And any value will never read silently into field of different type if it cannot be correctly represented there.
-
-In case the silent conversion is desired for some field, it could be marked with an option `autoconvert = true` or similar.
-
-Similar technique will not work for `fixed`, by design there is no place to distinguish between signed and unsigned values, so best idea would be to use it only with `packed = true` repeated fields, as an additional option `fixed = true`.
+Similar technique will not work for `fixed`, by design there is no place to distinguish between signed and unsigned values, so best idea would be to allow it only with `packed = true` repeated fields, as an additional option `fixed = true`.
 
 Type of the original field would be saved in the first byte of `packed header` (`varint` `uint32` `int32` `uint64` or `int64`)
 
-So that again no value would be silently converted if cannot be stored in the destination field during read (`autoconvert = true` can also be used here).
+So that again no value would be silently converted if cannot be stored in the destination type during read (`autoconvert = true` can also be used here).
 
 With this design we need just 4 normal integer types `uint32` `uint64` `int32` and `int64`, not 10.
+
+If 128-bit or larger values are required, design is easily extended without losing compatibility with buffers saved by previous versions unaware about longer types.

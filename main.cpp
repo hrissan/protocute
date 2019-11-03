@@ -34,7 +34,7 @@ struct CodeGenerator {
 	Namespace root_namespace;
 	size_t total_messages = 0;
 	std::vector<Namespace *> current_namespace;
-	size_t indent = 0; // signle indent for a::b::c::d
+	size_t indent = 0; // single indent for a::b::c::d
 	
 	struct IncludeGenerator {
 		CodeGenerator & cg;
@@ -110,7 +110,7 @@ struct CodeGenerator {
 	void close_package(){
 		if(current_package.empty())
 			return;
-		hpp << std::string(current_package.size(), '}') << " // ";
+		hpp << std::string(current_package.size(), '}') << " // namespace ";
 		std::string fullname;
 		for(const auto & s : current_package){
 			if(!fullname.empty())
@@ -173,7 +173,6 @@ struct CodeGenerator {
 		close_package();
 		if(!parse_ident_split(s, current_package))
 			throw std::runtime_error("Error parsing package name {" + s + "}");
-//		current_package.insert(current_package.begin(), "test");
 		for(const auto & s : current_package){
 			hpp << "namespace " << s << " { ";
 			auto cn = current_namespace.back();
@@ -186,7 +185,7 @@ struct CodeGenerator {
 			current_namespace.push_back(cit->second.get());
 		}
 		hpp << "\n\n";
-		indent = 1;
+		indent = 0;
 	}
 	void operator()(GOption const& s)
 	{
@@ -211,8 +210,6 @@ struct CodeGenerator {
 				first_field = false;
 				hpp << "\n" << std::string(indent + 1, '\t') << ef.name << " = " << ef.value;
 			}
-//			else if(f.type() == typeid(GOption))
-//				stream << boost::get<GOption>(f) << "|";
 		hpp << "\n" << std::string(indent, '\t') << "};\n\n";
 	}
 	void operator()(GMessage const& s){
@@ -238,29 +235,29 @@ struct CodeGenerator {
 		for(const auto & f : s.fields)
 			boost::apply_visitor(fg, f);
 		
-		cpp << "\tvoid read(" << cit->second->fullname << " & v, iterator s, iterator e){\n";
-		cpp << "\t\twhile(s != e){\n";
-		cpp << "\t\t\tauto m = read_varint(&s, e);\n";
-		cpp << "\t\t\tauto field_type = static_cast<unsigned>(m & 7U);\n";
+		cpp << "void read(" << cit->second->fullname << " & v, iterator s, iterator e){\n";
+		cpp << "\twhile(s != e){\n";
+		cpp << "\t\tauto m = read_varint(&s, e);\n";
+		cpp << "\t\tauto field_type = static_cast<unsigned>(m & 7U);\n";
 		if(fg.total_count != 0)
-			cpp << "\t\t\tauto field_number = static_cast<unsigned>(m >> 3U);\n";
-		cpp << "\t\t\t";
+			cpp << "\t\tauto field_number = static_cast<unsigned>(m >> 3U);\n";
+		cpp << "\t\t";
 
 		FieldGeneratorRead fgr(*this);
 		for(const auto & f : s.fields)
 			boost::apply_visitor(fgr, f);
 		if(fg.total_count != 0)
-			cpp << "\n\t\t\t\t";
+			cpp << "\n\t\t\t";
 		cpp << "skip_by_type(field_type, &s, e);\n";
-		cpp << "\t\t}\n\n";
 		cpp << "\t}\n\n";
-		cpp << "\tstd::string write(const " << cit->second->fullname << " & v){\n";
-		cpp << "\t\tstd::string s;\n";
+		cpp << "}\n\n";
+		cpp << "std::string write(const " << cit->second->fullname << " & v){\n";
+		cpp << "\tstd::string s;\n";
 		FieldGeneratorWrite fgw(*this);
 		for(const auto & f : s.fields)
 			boost::apply_visitor(fgw, f);
-		cpp << "\t\treturn s;\n";
-		cpp << "\t}\n\n";
+		cpp << "\treturn s;\n";
+		cpp << "}\n\n";
 
 		current_namespace.pop_back();
 		indent -= 1;
@@ -318,68 +315,68 @@ struct CodeGenerator {
 	}
 	void generate_field_read(GField const& s, size_t variant_index){
 		auto found_cn = resolve_type(s.type);
-		std::string ass = "\t\t\t\tv." + s.name + " = ";
+		std::string ass = "\t\t\tv." + s.name + " = ";
 		std::string ass2 = "";
 		if( s.kind == GFieldKind::ONEOF){
-			ass = "\t\t\t\tv." + s.name + ".emplace<" + std::to_string(variant_index) + ">() = ";
+			ass = "\t\t\tv." + s.name + ".emplace<" + std::to_string(variant_index) + ">() = ";
 			ass2 = "";
 		} else if( s.kind == GFieldKind::REPEATED){
-			ass = "\t\t\t\tv." + s.name + ".push_back(";
+			ass = "\t\t\tv." + s.name + ".push_back(";
 			ass2 = ")";
 			if( found_cn->type == Namespace::ENUM || found_cn->fullname == "bool" || s.type == "uint32" || s.type == "int32" || s.type == "uint64" || s.type == "int64"){
 				cpp << "if(field_number == " << s.number << " && field_type == 2)\n";
-				cpp << "\t\t\t\tread_packed_varint(v." << s.name << ", &s, e);\n\t\t\telse ";
+				cpp << "\t\t\tread_packed_varint(v." << s.name << ", &s, e);\n\t\telse ";
 			}else if( s.type == "sint32" || s.type == "sint64"){
 				cpp << "if(field_number == " << s.number << " && field_type == 2)\n";
-				cpp << "\t\t\t\tread_packed_s_varint(v." << s.name << ", &s, e);\n\t\t\telse ";
+				cpp << "\t\t\tread_packed_s_varint(v." << s.name << ", &s, e);\n\t\telse ";
 			}else if( s.type == "sfixed32" || s.type == "fixed32" || s.type == "float" || s.type == "sfixed64" || s.type == "fixed64" || s.type == "double"){
 				cpp << "if(field_number == " << s.number << " && field_type == 2)\n";
-				cpp << "\t\t\t\tread_packed_fixed(v." << s.name << ", &s, e);\n\t\t\telse ";
+				cpp << "\t\t\tread_packed_fixed(v." << s.name << ", &s, e);\n\t\telse ";
 			}
 		}
 		cpp << "if(field_number == " << s.number << " && field_type == ";
 		if(s.type == "sfixed32")
-			cpp << "5)\n" << ass << "read_fixed<int32_t>(&s, e)" << ass2 << ";\n\t\t\t";
+			cpp << "5)\n" << ass << "read_fixed<int32_t>(&s, e)" << ass2 << ";\n\t\t";
 		else if(s.type == "fixed32")
-			cpp << "5)\n" << ass << "read_fixed<uint32_t>(&s, e)" << ass2 << ";\n\t\t\t";
+			cpp << "5)\n" << ass << "read_fixed<uint32_t>(&s, e)" << ass2 << ";\n\t\t";
 		else if(s.type == "sint32")
-			cpp << "0)\n" << ass << "static_cast<int32_t>(zagzig(read_varint(&s, e)))" << ass2 << ";\n\t\t\t";
+			cpp << "0)\n" << ass << "static_cast<int32_t>(zagzig(read_varint(&s, e)))" << ass2 << ";\n\t\t";
 		else if(s.type == "sfixed64")
-			cpp << "1)\n" << ass << "read_fixed<int64_t>(&s, e)" << ass2 << ";\n\t\t\t";
+			cpp << "1)\n" << ass << "read_fixed<int64_t>(&s, e)" << ass2 << ";\n\t\t";
 		else if(s.type == "fixed64")
-			cpp << "1)\n" << ass << "read_fixed<uint64_t>(&s, e)" << ass2 << ";\n\t\t\t";
+			cpp << "1)\n" << ass << "read_fixed<uint64_t>(&s, e)" << ass2 << ";\n\t\t";
 		else if(s.type == "sint64")
-			cpp << "0)\n" << ass << "zagzig(read_varint(&s, e))" << ass2 << ";\n\t\t\t";
+			cpp << "0)\n" << ass << "zagzig(read_varint(&s, e))" << ass2 << ";\n\t\t";
 		else if(found_cn->fullname == "uint32_t")
-			cpp << "0)\n" << ass << "read_varint_t<uint32_t>(&s, e)" << ass2 << ";\n\t\t\t";
+			cpp << "0)\n" << ass << "read_varint_t<uint32_t>(&s, e)" << ass2 << ";\n\t\t";
 		else if(found_cn->fullname == "uint64_t")
-			cpp << "0)\n" << ass << "read_varint(&s, e)" << ass2 << ";\n\t\t\t";
+			cpp << "0)\n" << ass << "read_varint(&s, e)" << ass2 << ";\n\t\t";
 		else if(found_cn->fullname == "int32_t")
-			cpp << "0)\n" << ass << "read_varint_t<int32_t>(&s, e)" << ass2 << ";\n\t\t\t";
+			cpp << "0)\n" << ass << "read_varint_t<int32_t>(&s, e)" << ass2 << ";\n\t\t";
 		else if(found_cn->fullname == "int64_t")
-			cpp << "0)\n" << ass << "read_varint_t<int64_t>(&s, e)" << ass2 << ";\n\t\t\t";
+			cpp << "0)\n" << ass << "read_varint_t<int64_t>(&s, e)" << ass2 << ";\n\t\t";
 		else if(found_cn->fullname == "bool")
-			cpp << "0)\n" << ass << "read_varint(&s, e) != 0" << ass2 << ";\n\t\t\t";
+			cpp << "0)\n" << ass << "read_varint(&s, e) != 0" << ass2 << ";\n\t\t";
 		else if(found_cn->fullname == "float")
-			cpp << "5)\n" << ass << "read_fixed<float>(&s, e)" << ass2 << ";\n\t\t\t";
+			cpp << "5)\n" << ass << "read_fixed<float>(&s, e)" << ass2 << ";\n\t\t";
 		else if(found_cn->fullname == "double")
-			cpp << "1)\n" << ass << "read_fixed<double>(&s, e)" << ass2 << ";\n\t\t\t";
+			cpp << "1)\n" << ass << "read_fixed<double>(&s, e)" << ass2 << ";\n\t\t";
 		else if(found_cn->type == Namespace::ENUM)
-			cpp << "0)\n" << ass << "read_varint_t<" << found_cn->fullname << ">(&s, e)" << ass2 << ";\n\t\t\t";
+			cpp << "0)\n" << ass << "read_varint_t<" << found_cn->fullname << ">(&s, e)" << ass2 << ";\n\t\t";
 		else if(found_cn->fullname == "std::string")
-			cpp << "2)\n" << ass << "read_string(&s, e)" << ass2 << ";\n\t\t\t";
+			cpp << "2)\n" << ass << "read_string(&s, e)" << ass2 << ";\n\t\t";
 		else {
 			if( s.kind == GFieldKind::ONEOF){
 				cpp << "2)\n";
-				cpp << "\t\t\t\tread_message(v." << s.name << ".emplace<" << variant_index << ">(), &s, e);\n\t\t\t";
+				cpp << "\t\t\tread_message(v." << s.name << ".emplace<" << variant_index << ">(), &s, e);\n\t\t";
 			}else if( s.kind == GFieldKind::REPEATED){
-				cpp << "2){\n\t\t\t\tv." << s.name << ".emplace_back();\n";
-				cpp << "\t\t\t\tread_message(v." << s.name << ".back(), &s, e);\n\t\t\t}";
+				cpp << "2){\n\t\t\tv." << s.name << ".emplace_back();\n";
+				cpp << "\t\t\tread_message(v." << s.name << ".back(), &s, e);\n\t\t}";
 			}else if(s.kind == GFieldKind::OPTIONAL && s.is_true_optional()){
 				cpp << "2)\n";
-				cpp << "\t\t\t\tread_message(v." << s.name << ".emplace(), &s, e);\n\t\t\t";
+				cpp << "\t\t\tread_message(v." << s.name << ".emplace(), &s, e);\n\t\t";
 			}else{
-				cpp << "2)\n\t\t\t\tread_message(v." << s.name << ", &s, e);\n\t\t\t";
+				cpp << "2)\n\t\t\tread_message(v." << s.name << ", &s, e);\n\t\t";
 			}
 		}
 		cpp << "else ";
@@ -388,51 +385,48 @@ struct CodeGenerator {
 		GField tmp;
 		tmp.name = s.name;
 		tmp.kind = GFieldKind::ONEOF;
-		cpp << "\t\tswitch(v." << s.name << ".index()){\n";
+		cpp << "\tswitch(v." << s.name << ".index()){\n";
 		for(size_t i = 0; i != s.fields.size(); ++i) {
 			tmp.type = s.fields[i].type;
 			tmp.number = s.fields[i].number;
 			generate_field_write(tmp, i + 1);
 		}
-		cpp << "\t\tdefault:\n";
-		cpp << "\t\t\tbreak;\n";
-		cpp << "\t\t}\n";
+		cpp << "\tdefault:\n";
+		cpp << "\t\tbreak;\n";
+		cpp << "\t}\n";
 	}
 	void generate_field_write(GField const& s){
 		generate_field_write(s, 0);
 	}
 	void generate_field_write(GField const& s, size_t variant_index){
 		auto found_cn = resolve_type(s.type);
-		size_t n_tabs = 2;
+		size_t n_tabs = 1;
 		std::string ref = "v." + s.name;
 		if( s.kind == GFieldKind::ONEOF){
-//			cpp << "\t\tif(auto pval = std::get_if<" << variant_index << ">(&v." << s.name <<"))\n";
-//			ref = "*pval";
-//			n_tabs += 1;
-			cpp << "\t\tcase " << variant_index << ":\n";
+			cpp << "\tcase " << variant_index << ":\n";
 			ref = "std::get<" + std::to_string(variant_index) + ">(v." + s.name + ")";
 			n_tabs += 1;
 		} else if( s.kind == GFieldKind::REPEATED){
 			if(s.is_packed()){
 				if( found_cn->type == Namespace::ENUM || found_cn->fullname == "bool" || s.type == "uint32" || s.type == "int32" || s.type == "uint64" || s.type == "int64"){
-					cpp << "\t\t\twrite_packed_varint(" << s.number << ", v." << s.name << ", s);\n";
+					cpp << "\twrite_packed_varint(" << s.number << ", v." << s.name << ", s);\n";
 					return;
 				}
 				if( s.type == "sint32" || s.type == "sint64"){
-					cpp << "\t\t\twrite_packed_s_varint(" << s.number << ", v." << s.name << ", s);\n";
+					cpp << "\twrite_packed_s_varint(" << s.number << ", v." << s.name << ", s);\n";
 					return;
 				}
 				if( s.type == "sfixed32" || s.type == "fixed32" || s.type == "float" || s.type == "sfixed64" || s.type == "fixed64" || s.type == "double"){
-					cpp << "\t\t\twrite_packed_fixed(" << s.number << ", v." << s.name << ", s);\n";
+					cpp << "\twrite_packed_fixed(" << s.number << ", v." << s.name << ", s);\n";
 					return;
 				}
 				throw std::runtime_error("Only primitive types can be packed");
 			}
-			cpp << "\t\tfor(const auto & vv : v." << s.name <<")\n";
+			cpp << "\tfor(const auto & vv : v." << s.name <<")\n";
 			ref = "vv";
 			n_tabs += 1;
 		}else if(s.kind == GFieldKind::OPTIONAL && s.is_true_optional()){
-			cpp << "\t\tif(v." << s.name <<")\n";
+			cpp << "\tif(v." << s.name <<")\n";
 			ref = "*v." + s.name;
 			n_tabs += 1;
 		}else if( s.kind != GFieldKind::REQUIRED && !found_cn->enum_default_value.empty() ){
@@ -474,7 +468,7 @@ struct CodeGenerator {
 		else
 			cpp << std::string(n_tabs, '\t') << "write_field_string(" << s.number << ", write(" << ref << "), s);\n";
 		if( s.kind == GFieldKind::ONEOF){
-			cpp << "\t\t\tbreak;\n";
+			cpp << "\t\tbreak;\n";
 		}
 	}
 	void generate_field(GField const& s){
@@ -498,7 +492,7 @@ struct CodeGenerator {
 		hpp << " " << s.name;
 		if(s.kind == GFieldKind::REPEATED){
 		}else if(s.kind == GFieldKind::OPTIONAL && s.is_true_optional()){
-		}else if(s.kind != GFieldKind::REPEATED && !found_cn->enum_default_value.empty()) {// && found_cn->fullname != "std::string"
+		}else if(s.kind != GFieldKind::REPEATED && !found_cn->enum_default_value.empty()) {
 			if(found_cn->type == Namespace::ENUM)
 				hpp << " = " << found_cn->fullname << "::" << found_cn->enum_default_value;
 			else
@@ -510,7 +504,6 @@ struct CodeGenerator {
 		hpp << std::string(indent, '\t') << "std::variant<std::monostate";
 		for(const auto & f : s.fields) {
 			hpp << ",\n" << std::string(indent + 1, '\t');
-//			hpp << ", ";
 			auto found_cn = resolve_type(f.type);
 			if(found_cn->type == Namespace::BUILTIN)
 				hpp << found_cn->fullname;
@@ -528,8 +521,8 @@ struct CodeGenerator {
 	}
 	void gen_defs(const Namespace & na){
 		if(na.type == Namespace::MESSAGE){
-			hpp << "\tvoid read(" << na.fullname << " & v, iterator s, iterator e);\n";
-			hpp << "\tstd::string write(const " << na.fullname << " & v);\n\n";
+			hpp << "void read(" << na.fullname << " & v, iterator s, iterator e);\n";
+			hpp << "std::string write(const " << na.fullname << " & v);\n\n";
 		}
 		for(const auto & m : na.member){
 			gen_defs(*m.second.get());
@@ -546,7 +539,7 @@ struct CodeGenerator {
 
 		if( total_messages != 0){
 			hpp << "namespace protocute {\n\n";
-			hpp << "\ttypedef std::string::const_iterator iterator;\n\n";
+			hpp << "typedef const char * iterator;\n\n";
 
 			gen_defs(root_namespace);
 			hpp << "} // namespace protocute\n\n";
@@ -628,38 +621,8 @@ int generate(std::string pf, std::vector<std::string> import_paths, std::string 
 	generator.generate(result);
 		
 	generator.finish_header();
-/*	test_rules();
-
-	std::vector<std::string> spl;
-	bool a1 = parse_ident_split("a.bcd.ef", spl);
-	bool a2 = parse_ident_split("bcd.ef1-", spl);
-	bool a3 = parse_ident_split("bcd", spl);
-	GProtoFile result;
-
-//	bool ok = parse_proto("syntax = \"proto2\";\npackage hw.trezor.messages.common;; enum EnumAllowingAlias {A=1; B=2;} message Outer{}", result);
-//	std::cout << int(ok) << " " << result << std::endl;
-	
-	std::ifstream t("test.proto");
-	std::string str(std::istreambuf_iterator<char>{t},
-                 std::istreambuf_iterator<char>{});
-
-//	result = GProtoFile{};
-	bool ok = parse_proto(str, result);
-	std::cout << int(ok) << " " << result << std::endl;
-
-	CodeGenerator generator(cwd, "test");
-	
-	for(const auto & s : result.fields){
-		boost::apply_visitor(generator, s);
-	}
-	
-	generator.finish_header();
-
-//	std::cout << str << std::endl;*/
 	return 0;
 }
-
-//#include "test.hpp"
 
 static std::string normalize_path(std::string str){
 	while(!str.empty() && str.back() == '/')
@@ -669,7 +632,6 @@ static std::string normalize_path(std::string str){
 
 int main(int argc, const char * argv[])
 {
-//	test_rules();
 	std::vector<std::string> import_paths;
 	std::vector<std::string> protofiles;
 	std::string cpp_out_path;
@@ -695,6 +657,11 @@ int main(int argc, const char * argv[])
 			import_paths.push_back(normalize_path(std::string(argv[i]).substr(13)));
 		if(std::string(argv[i]).find("--cpp_out=") == 0)
 			cpp_out_path = normalize_path(std::string(argv[i]).substr(10));
+		if(argv[i] == std::string("--test")){
+			std::cout << "Running tests..." << std::endl;
+			test_rules();
+			return 0;
+		}
 		if(argv[i][0] != '-')
 			protofiles.push_back(argv[i]);
 	}
@@ -722,100 +689,5 @@ int main(int argc, const char * argv[])
 		}
 		generate(pf, import_paths, cpp_out_path);
 	}
-//	::hw::trezor::messages::common::HDNodeType node, node2;
-//	node.depth = 1;
-//	node.chain_code = "hren";
-//	std::string str = protocute::write(node);
-	
-//	protocute::read(node2, str.begin(), str.end());
 	return 0;
 }
-
-/*
-template<class T, class TT>
-void print_vals(const std::string &tip) {
-	for (auto i : {4, -4}) {
-		T obj;
-		obj.set_value(i);
-		auto obj_str = obj.SerializeAsString();
-		std::cout << tip << "(" << i << ") = " << common::to_hex(common::as_binary_array(obj_str)) << std::endl;
-		TT obj2;
-		protobuf::read(obj2, obj_str.begin(), obj_str.end());
-		//		invariant(obj2.value == i, "");
-		auto obj2_str = protobuf::write(obj2);
-		std::cout << tip << "(" << i << ") = " << common::to_hex(common::as_binary_array(obj2_str)) << std::endl;
-		T obj3;
-		obj3.ParseFromString(obj2_str);
-		invariant(obj3.value() == obj.value(), "");
-	}
-}
-
-template<class T, class TT>
-void print_vals2(const std::string &tip) {
-	T obj;
-	TT obj2;
-	obj.add_value(4);
-	obj.add_value(-4);
-	obj2.value.push_back(4);
-	obj2.value.push_back(-4);
-	std::cout << tip << "( 4) = " << common::to_hex(common::as_binary_array(obj.SerializeAsString())) << std::endl;
-	std::cout << tip << "( 4) = " << common::to_hex(common::as_binary_array(protobuf::write(obj2))) << std::endl;
-}
-
-template<class T>
-void test_read(const std::string &tip, const std::string &encoded) {
-	T obj;
-	obj.ParseFromString(encoded);
-	std::cout << tip << "() = " << obj.value() << std::endl;
-}
-
-template<class T>
-void test_read2(const std::string &tip, const std::string &encoded) {
-	T obj;
-	obj.ParseFromString(encoded);
-	for (int i = 0; i != obj.value_size(); ++i)
-		std::cout << tip << "(" << i << ") = " << obj.value(i) << std::endl;
-}
-*/
-
-	/*	print_vals<awful::Tint32, awful::Tint32>(" int32");
-	    print_vals<awful::Tuint32, awful::Tuint32>("uint32");
-	    print_vals<awful::Tsint32, awful::Tsint32>("sint32");
-	    print_vals<awful::Tint64, awful::Tint64>(" int64");
-	    print_vals<awful::Tuint64, awful::Tuint64>("uint64");
-	    print_vals<awful::Tsint64, awful::Tsint64>("sint64");
-	    print_vals<awful::Tfixed32, awful::Tfixed32>("fixed32");
-	    print_vals<awful::Tsfixed32, awful::Tsfixed32>("sfixed32");
-	    print_vals<awful::Tfixed64, awful::Tfixed64>("fixed64");
-	    print_vals<awful::Tsfixed64, awful::Tsfixed64>("sfixed64");
-	    print_vals<awful::Tfloat, awful::Tfloat>("float");
-	    print_vals<awful::Tdouble, awful::Tdouble>("double");
-
-	    print_vals2<awful::RTint32, awful::RTint32>(" int32");
-	    print_vals2<awful::RTuint32, awful::RTuint32>("uint32");
-	    print_vals2<awful::RTsint32, awful::RTsint32>("sint32");
-	    print_vals2<awful::RTint64, awful::RTint64>(" int64");
-	    print_vals2<awful::RTuint64, awful::RTuint64>("uint64");
-	    print_vals2<awful::RTsint64, awful::RTsint64>("sint64");
-	    print_vals2<awful::RTfixed32, awful::RTfixed32>("fixed32");
-	    print_vals2<awful::RTsfixed32, awful::RTsfixed32>("sfixed32");
-	    print_vals2<awful::RTfixed64, awful::RTfixed64>("fixed64");
-	    print_vals2<awful::RTsfixed64, awful::RTsfixed64>("sfixed64");
-	//	print_vals2<awful::RTfloat>("float");
-	//	print_vals2<awful::RTdouble>("double");
-
-	    std::vector<std::string> strs{"0804", "0808", "0807", "08fcffffffffffffffff01", "0d04000000",
-	"090400000000000000"}; for(const auto & str : strs){ std::cout << "---- " << str << std::endl; auto str2 =
-	common::as_string(common::from_hex(str)); test_read<awful::Tint32>(" int32", str2);
-	        test_read<awful::Tuint32>("uint32", str2);
-	        test_read<awful::Tsint32>("sint32", str2);
-	        test_read<awful::Tint64>(" int64", str2);
-	        test_read<awful::Tuint64>("uint64", str2);
-	        test_read<awful::Tsint64>("sint64", str2);
-	        test_read<awful::Tfixed32>("fixed32", str2);
-	        test_read<awful::Tsfixed32>("sfixed32", str2);
-	        test_read<awful::Tfixed64>("fixed64", str2);
-	        test_read<awful::Tsfixed64>("sfixed64", str2);
-	        test_read<awful::Tfloat>("float", str2);
-	        test_read<awful::Tdouble>("double", str2);
-	    }*/
