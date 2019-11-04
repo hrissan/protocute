@@ -124,7 +124,7 @@ struct Something {
 
 `std::variant` is generated, plus `enum` mapped to variant index (if identical types are used, you can only set and get by index).
 
-`Enum` contains field index in `std::variant``, not field number used as an identifier on wire.
+`Enum` contains field index in `std::variant`, not field number used as an identifier on wire (your code does not need to know that).
 
 So in your code you can access particular field as 
 ```
@@ -132,6 +132,11 @@ auto pos = std::get<Something::i_pos>(something.position);
 
 something.emplace<Something::i_name>("Example");
 ```
+
+### default values
+
+For now, `protocute` does not read `default` option from `.proto` definitions, and default value is selected based on field type.
+This is actually what Google recommends for all new `.proto` definitions.
 
 ### encode/decode
 
@@ -213,8 +218,6 @@ So actual good design would be that all fields are optional on the wire, and the
 
 If actual `optional` field is required, just add `[ protocute.optional = true ];` to the required field.
 
-For now, `protocute` does not read `default` option from `.proto` definitions, and default value is selected based on field type.
-This is actually what Google recommends for all new `.proto` definitions.
 
 ### Signed is broken
 
