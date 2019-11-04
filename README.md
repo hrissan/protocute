@@ -315,7 +315,7 @@ Of cause, repeated `fixed32` field with size `2 * x` will be happily read into r
 
 Largest 64-bit value in varint encoding actually stores 70 bit of data, more than enough to store actual value, with explicit sign.
 
-So actual values from `-2^63` to `2^64-1` will be stored. When reading, check will be performed if the actual value can be assigned to destination type.
+So actual values from `-2^63` to `2^64-1` will be stored, always zigzag-encoded. When reading, check will be performed if the actual value can be assigned to destination type.
 Negative values obviously cannot be assigned to unsigned ints, and very large unsigned values cannot be assigned to signed ints.
 
 In case the silent conversion is desired for some field instead of error, the field could be marked with an option `autoconvert = true` or similar.
