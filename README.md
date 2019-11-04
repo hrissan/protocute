@@ -18,9 +18,15 @@ We have an example of `protobuf` python implementation, which produces beautiful
 
 `protocute` is an experimental attempt to make minimalistic portable implementation of `protobuf`, so that using `protobuf` from C++ becomes a simple task.
 
-It is being implemented step by step as more complicated `.proto` definitions are required in my own project (integration with 3-d party server which uses `protobuf` as an exchange format).
+It is being implemented step by step as more complicated `.proto` definitions are required projects where it is used.
 
 If you like `protocute` but it lacks some `protobuf` feature you need - just add an issue and I will try to look into it.
+
+For now `protocute` is not optimised too much for encoding/decoding speed, so if you need to parse gigabytes of messages really quickly, you probably would be better served by Google implementation.
+
+There is some internal tests, but alas, no thorough testing.
+
+`protocute` does not work on big endian platforms if `packed` fields are used.
 
 ## How `protocute` compiles various features of `.proto` files
 
@@ -55,22 +61,32 @@ enum class Side {
 ### message
 
 ```
-message Ints {
+message Types {
     optional int32 value1 = 1;
     repeated uint64 value2 = 2 [packed = true];
     optional Side side = 3;
+    optional string str = 4;
+    optional bool boo = 5;
+    optional bytes bite = 6;
+    optional float num1 = 7;
+    repeated double num2 = 8 [packed = true];
 }
 ```
 C++
 ```
-struct Ints { 
+struct Types { 
 	int32_t value1 = 0;
 	std::vector<uint64_t> value2;
 	Side side = ::test123::Side::LEFT;
+	std::string str;
+	bool boo = false;
+	std::string bite;
+	float num1 = 0;
+	std::vector<double> num2;
 };
 ```
 
-`string` is compiled into `std::string`, integer types to fixed-size integers,
+`string` and `bytes` are compiled into `std::string`, numeric types to their c++ counterparts,
 `repeated` is compiled into `std::vector`.
 
 
@@ -92,7 +108,10 @@ struct Point {
 };
 ```
 
-`optional` and `required` are ignored, `protocute.optional` can be added to get `std::optional`
+`optional` and `required` are ignored, `protocute.optional` can be added to get `std::optional`.
+
+When encoding, for `std::optional` fields value will be serialised if optional is not empty.
+For other single-value fields value will be serialised if it does not equal default value for field type (`empty` for string and bytes, `0` for numbers, `false` for bool).
 
 
 ### oneof
