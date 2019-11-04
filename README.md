@@ -24,7 +24,8 @@ If you like `protocute` but it lacks some `protobuf` feature you need - just add
 
 ## How `protocute` compiles various features of `.proto` files
 
-### package becomes namespace
+### package
+
 ```
 package test123;
 ```
@@ -33,7 +34,8 @@ C++
 namespace test123 { 
 ```
 
-### `enum` becomes `enum class`
+### enum
+
 ```
 enum Side {
     LEFT  = 0;
@@ -50,7 +52,10 @@ enum class Side {
 };
 ```
 
-### message becomes struct, repeated becomes `std::vector`
+### message
+
+`repeated` is compiled into `std::vector`
+
 ```
 message Ints {
     optional int32 value1 = 1;
@@ -67,7 +72,10 @@ struct Ints {
 };
 ```
 
-### optional is omitted, `protocute.optional` can be added to get `std::optional`
+### optional
+
+`optional` and `strict` are ignored, `protocute.optional` can be added to get `std::optional`
+
 ```
 message Point {
     optional int64 x = 1;
@@ -84,7 +92,10 @@ struct Point {
 };
 ```
 
-### `oneof` becomes `std::variant` plus `enum` mapped to variant index, identical types are supported
+### oneof
+
+`std::variant` is generated, plus `enum` mapped to variant index, identical types are supported
+
 ```
 message Something {
     oneof position {
@@ -111,9 +122,15 @@ struct Something {
 ```
 You see that enum contains field index in std::variant, not field number used as an identifier on wire.
 
-So in your code you can access particular field as `std::get<Something::i_pos>(something.position)` and set as `something.emplace<Something::i_name>("Example")`.
+So in your code you can access particular field as 
+```
+auto pos = std::get<Something::i_pos>(something.position);
+
+something.emplace<Something::i_name>("Example");
+```
 
 ### Every `enum` and `message` will get the following pair of functions in `protocute` namespace
+
 ```
 void read(::test123::Point & v, iterator s, iterator e);
 std::string write(const ::test123::Point & v);
@@ -122,7 +139,7 @@ std::string write(const ::test123::Point & v);
 Where `iterator` is defined as `typedef const char * iterator;` so that any memory buffer can be decoded
 without resorting to template code (for `std::string str`, just use `read(v, str.data(), str.data() + str.size());`.
 
-## Protobuf design deficiencies
+## Protobuf design deficiencies, that we cannot fix
 
 ### Optional is broken
 
