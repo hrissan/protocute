@@ -285,7 +285,7 @@ uint64 |  04     | impossible
 sint64 |  08     | 07
 
 Ok, looks like we have actually 2 different representations of `4`, and 2 different representation of `-4`.
-Moreover we have not way to know if signed or unsigned value was saved.
+Moreover we have no way to know if signed or unsigned value was saved.
 
 This means, that if we had `uintXX`, we cannot change it into `sintXX`, because all saved values will be doubled when read from wire. Reverse is also true.
 
@@ -293,7 +293,7 @@ Also, if we had `uint64` field with `2^64-1` value and later changed field type 
 
 ### Fixed types and packed option are somewhat broken
 
-After observation that large values require more bytes in varint, then in fixed coding, `protobuf` team added fixed types.
+After trivial observation that large values require more bytes in varint, than in fixed coding, `protobuf` team added fixed types.
 
 First problem with that is `fixed32` has the same format on wire as `float` (same with `fixed64` and `double`), so changing `fixed32` field to `float` and back is impossible, because all saved values (even so mundane as `4`) will be broken after read.
 
@@ -320,12 +320,13 @@ Negative values obviously cannot be assigned to unsigned ints, and very large un
 
 In case the silent conversion is desired for some field instead of error, the field could be marked with an option `autoconvert = true` or similar.
 
-Similar technique will not work for `fixed`, by design there is no place to distinguish between signed and unsigned values, so best idea would be to allow it only with `packed = true` repeated fields, as an additional option `fixed = true`.
+This technique cannot be applied to single `fixed` values, as by design there is no place to distinguish between signed and unsigned values, so best idea would be to allow fixed encoding only with `packed = true` repeated fields, as an additional option `fixed = true`.
 
-Type of the original field would be saved in the first byte of `packed header` (`varint` `uint32` `int32` `uint64` or `int64`)
+Type of the original field would be saved in the first byte of `packed header` (`varint` `uint32` `int32` `uint64` `int64` `float` or `double`)
 
-So that again no value would be silently converted if cannot be stored in the destination type during read (`autoconvert = true` can also be used here).
+So that again actual value would be stored, and could be correctly converted to any type where it will fit. (`autoconvert = true` can also be used here).
+If no conversion is required (stored field type equals to type of field declared in the code), special path inside parsing code will ensure the parsing is lightning-fast in this case.
 
-With this design we need just 4 normal integer types `uint32` `uint64` `int32` and `int64`, not 10.
+With this design we need just 4 normal integer types `uint32` `uint64` `int32` and `int64`, not 10. Also we can switch from floating-point types to integers and back as long as actual saved values can be represented in new type.
 
-If 128-bit or larger values are required, design is easily extended without losing compatibility with buffers saved by previous versions unaware about longer types.
+If 128-bit or larger values are required later, design is easily extended without losing compatibility with buffers saved by previous versions unaware about longer types.
