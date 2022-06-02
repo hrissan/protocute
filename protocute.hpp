@@ -1,6 +1,7 @@
 #include <string>
 #include <vector>
 #include <cstdint>
+#include <cstring>
 #include <stdexcept>
 
 namespace protocute {
@@ -89,7 +90,7 @@ template<class T>
 inline T read_fixed(iterator * s, iterator e){
 	auto p = skip(s, e, sizeof(T));
 	T val;
-	memcpy(&val, &*p, sizeof(T));
+	std::memcpy(&val, &*p, sizeof(T));
 	return val;
 }
 
@@ -179,7 +180,7 @@ void read_packed_fixed(std::vector<T> & v, iterator * s, iterator e) {
 		throw std::runtime_error("packed fixed field has uneven size");
 	auto count = len / sizeof(T);
 	v.resize(v.size() + count); // safe because skip above
-	memcpy(v.data() + v.size() - count, &*p, len);
+	std::memcpy(v.data() + v.size() - count, &*p, len);
 }
 
 } // namespace protocute

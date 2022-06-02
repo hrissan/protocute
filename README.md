@@ -330,3 +330,4 @@ If no conversion is required (stored field type equals to type of field declared
 With this design we need just 4 normal integer types `uint32` `uint64` `int32` and `int64`, not 10. Also we can switch from floating-point types to integers and back as long as actual saved values can be represented in new type.
 
 If 128-bit or larger values are required later, design is easily extended without losing compatibility with buffers saved by previous versions unaware about longer types.
+

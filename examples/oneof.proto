@@ -1,0 +1,33 @@
+syntax = "proto2";
+package test123;
+
+enum Side {
+    LEFT  = 0;
+    RIGHT = 1;
+    UNKNOWN_SIDE = 99;
+}
+
+message Types {
+    optional int32 value1 = 1;
+    repeated uint64 value2 = 2 [packed = true];
+    optional Side side = 3;
+    optional string str = 4;
+    optional bool boo = 5;
+    optional bytes bite = 6;
+    optional float num1 = 7;
+    repeated double num2 = 8 [packed = true];
+}
+
+message Point {
+    optional int64 x = 1;
+    optional int64 y = 2;
+    optional int64 z = 3 [ protocute.optional = true ];
+}
+
+message Something {
+    oneof position {
+        string name = 1;
+        string name_alt = 2;
+        Point pos = 3;
+    }
+}
